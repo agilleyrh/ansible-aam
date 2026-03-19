@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.26.3"]
+build-backend = "hatchling.build"
+
+[project]
+name = "advanced-automation-manager-api"
+version = "0.1.0"
+description = "Central fleet management hub for Red Hat Ansible Automation Platform environments."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "cryptography>=44.0.0",
+  "fastapi>=0.115.8",
+  "httpx>=0.28.1",
+  "pydantic-settings>=2.7.1",
+  "psycopg[binary]>=3.2.3",
+  "redis>=5.2.1",
+  "rq>=2.1.0",
+  "sqlalchemy>=2.0.36",
+  "uvicorn[standard]>=0.34.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
