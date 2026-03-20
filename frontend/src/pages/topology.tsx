@@ -42,7 +42,7 @@ export function TopologyPage() {
         <div>
           <p className="eyebrow">Topology</p>
           <h2>Service and resource relationships</h2>
-          <p className="page-header__description">Follow how each environment expands into services and then into collected resources after sync.</p>
+          <p className="page-header__description">Follow how each environment expands into services, collected resources, and declared platform integrations such as operators, Terraform, receptor, Backstage, and MCP.</p>
         </div>
         {environments.length > 0 ? (
           <select value={selected} onChange={(event) => setSelected(event.target.value)} className="select-input select-input--compact">
@@ -61,7 +61,7 @@ export function TopologyPage() {
           description="Register and sync at least one AAP environment to populate service and resource relationships."
           action={
             <Link className="primary-button" to="/environments">
-              Register environment
+              Register first environment
             </Link>
           }
         />
@@ -75,6 +75,18 @@ export function TopologyPage() {
                   <StatusPill status={node.status} />
                 </div>
                 <p>{node.kind}</p>
+                {Object.keys(node.metadata).length > 0 ? (
+                  <dl className="topology-node__meta">
+                    {Object.entries(node.metadata)
+                      .slice(0, 3)
+                      .map(([key, value]) => (
+                        <div key={key}>
+                          <dt>{key.replaceAll("_", " ")}</dt>
+                          <dd>{typeof value === "object" ? JSON.stringify(value) : String(value)}</dd>
+                        </div>
+                      ))}
+                  </dl>
+                ) : null}
               </article>
             ))}
           </div>

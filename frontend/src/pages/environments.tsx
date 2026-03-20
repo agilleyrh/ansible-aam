@@ -112,10 +112,10 @@ export function EnvironmentsPage() {
                       <td>
                         <div className="row-actions">
                           <Link className="secondary-button secondary-button--small" to={`/environments/${environment.id}`}>
-                            Open
+                            View details
                           </Link>
                           <button className="secondary-button secondary-button--small" type="button" disabled={syncingId === environment.id} onClick={() => queueSync(environment)}>
-                            {syncingId === environment.id ? "Queueing..." : "Sync now"}
+                            {syncingId === environment.id ? "Queueing..." : "Queue sync"}
                           </button>
                         </div>
                       </td>

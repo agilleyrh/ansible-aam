@@ -17,6 +17,8 @@ def run_search(db: Session, query: str) -> list[SearchResult]:
             or_(
                 ManagedResource.name.ilike(f"%{query}%"),
                 ManagedResource.resource_type.ilike(f"%{query}%"),
+                ManagedResource.service.ilike(f"%{query}%"),
+                ManagedResource.external_id.ilike(f"%{query}%"),
                 ManagedEnvironment.name.ilike(f"%{query}%"),
             )
         )
@@ -38,4 +40,3 @@ def run_search(db: Session, query: str) -> list[SearchResult]:
         )
         for resource, environment in results
     ]
-

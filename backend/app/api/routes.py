@@ -7,8 +7,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.dependencies import get_db
-from app.models import ManagedEnvironment, PolicyDefinition, PolicyResult, SyncExecution
+from app.models import ActionAudit, ManagedEnvironment, PolicyDefinition, PolicyResult, SyncExecution
 from app.schemas import (
+    ActivityEventResponse,
     DashboardResponse,
     EnvironmentCreate,
     EnvironmentDetail,
@@ -207,6 +208,7 @@ def environment_topology(
         TopologyNode(id=environment.id, label=environment.name, kind="environment", status=environment.status),
     ]
     edges: list[TopologyEdge] = []
+    capabilities = environment.capabilities or {}
 
     for snapshot in environment.snapshots:
         service_id = f"{environment.id}:{snapshot.service}"
@@ -235,6 +237,71 @@ def environment_topology(
                 )
             )
             edges.append(TopologyEdge(source=service_id, target=resource_id, relationship="manages"))
+
+    integration_specs: list[tuple[str, str, str, dict[str, object]]] = []
+    management_mode = str(capabilities.get("management_mode") or "").strip()
+    if management_mode:
+        integration_specs.append(
+            (
+                "management",
+                management_mode,
+                "configured",
+                {
+                    "mode": management_mode,
+                    "cluster_namespace": capabilities.get("cluster_namespace"),
+                    "operator_namespace": capabilities.get("operator_namespace"),
+                    "terraform_workspace": capabilities.get("terraform_workspace"),
+                },
+            )
+        )
+    if capabilities.get("runner_enabled"):
+        integration_specs.append(("runner", "Ansible Runner", "enabled", {"source": "ansible-runner"}))
+    if capabilities.get("builder_pipeline_enabled"):
+        integration_specs.append(("builder", "Execution environment builder", "enabled", {"source": "ansible-builder"}))
+    if capabilities.get("receptor_mesh_enabled"):
+        integration_specs.append(
+            (
+                "receptor",
+                "Receptor mesh",
+                "enabled",
+                {"nodes": capabilities.get("receptor_node_count"), "source": "receptor"},
+            )
+        )
+    if capabilities.get("content_signing_enabled"):
+        integration_specs.append(("content_trust", "Content signing", "enabled", {"source": "ansible-sign"}))
+    if capabilities.get("metrics_enabled") or capabilities.get("automation_reports_enabled"):
+        integration_specs.append(
+            (
+                "observability",
+                "Metrics and reports",
+                "enabled",
+                {
+                    "metrics_enabled": capabilities.get("metrics_enabled"),
+                    "automation_reports_enabled": capabilities.get("automation_reports_enabled"),
+                },
+            )
+        )
+    backstage_entity_ref = str(capabilities.get("backstage_entity_ref") or "").strip()
+    if backstage_entity_ref:
+        integration_specs.append(("developer_portal", "Backstage catalog", "configured", {"entity_ref": backstage_entity_ref}))
+    mcp_endpoint = str(capabilities.get("mcp_endpoint") or "").strip()
+    if mcp_endpoint:
+        integration_specs.append(("mcp", "AAP MCP endpoint", "configured", {"endpoint": mcp_endpoint}))
+    if capabilities.get("ai_assistant_enabled"):
+        integration_specs.append(("ai_assistant", "AI assistance", "enabled", {"source": "ansible-ai-connect"}))
+
+    for kind, label, status_value, metadata in integration_specs:
+        node_id = f"{environment.id}:integration:{kind}"
+        nodes.append(
+            TopologyNode(
+                id=node_id,
+                label=label,
+                kind=kind,
+                status=status_value,
+                metadata={key: value for key, value in metadata.items() if value not in (None, "", False)},
+            )
+        )
+        edges.append(TopologyEdge(source=environment.id, target=node_id, relationship="integrates"))
 
     return TopologyResponse(nodes=nodes, edges=edges)
 
@@ -307,6 +374,7 @@ def list_sync_executions(
             environment_id=row.environment_id,
             status=row.status,
             requested_by=row.requested_by,
+            created_at=row.created_at,
             started_at=row.started_at,
             finished_at=row.finished_at,
             error_text=row.error_text,
@@ -314,6 +382,101 @@ def list_sync_executions(
         )
         for row in rows
     ]
+
+
+def _action_summary(action: str, payload: dict, response: dict) -> str:
+    if action == "launch_job_template":
+        return "Launched job template"
+    if action == "launch_workflow_job_template":
+        return "Launched workflow job template"
+    if action == "set_activation_state":
+        return "Enabled activation" if payload.get("enabled", True) else "Disabled activation"
+    if action == "sync_project":
+        return "Started project sync"
+    if action == "sync_repository":
+        return "Started repository sync"
+    if response.get("error"):
+        return str(response["error"])
+    return action.replace("_", " ")
+
+
+def _sync_summary(row: SyncExecution) -> str:
+    if row.error_text:
+        return row.error_text
+    resource_count = row.details.get("resource_count")
+    if resource_count is not None:
+        return f"Updated {resource_count} tracked resources"
+    return row.job_type.replace("-", " ")
+
+
+@router.get("/activity", response_model=list[ActivityEventResponse])
+def list_activity(
+    environment_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _: UserContext = Depends(require_roles("aam.viewer")),
+) -> list[ActivityEventResponse]:
+    sync_statement = (
+        select(SyncExecution, ManagedEnvironment)
+        .join(ManagedEnvironment, ManagedEnvironment.id == SyncExecution.environment_id)
+        .order_by(SyncExecution.created_at.desc())
+    )
+    action_statement = (
+        select(ActionAudit, ManagedEnvironment)
+        .join(ManagedEnvironment, ManagedEnvironment.id == ActionAudit.environment_id)
+        .order_by(ActionAudit.created_at.desc())
+    )
+
+    if environment_id:
+        sync_statement = sync_statement.where(SyncExecution.environment_id == environment_id)
+        action_statement = action_statement.where(ActionAudit.environment_id == environment_id)
+
+    sync_rows = db.execute(sync_statement.limit(limit)).all()
+    action_rows = db.execute(action_statement.limit(limit)).all()
+
+    items = [
+        ActivityEventResponse(
+            id=row.id,
+            kind="sync",
+            environment_id=environment.id,
+            environment_name=environment.name,
+            service="collector",
+            operation=row.job_type,
+            target=environment.name,
+            status=row.status,
+            requested_by=row.requested_by,
+            summary=_sync_summary(row),
+            created_at=row.created_at,
+            started_at=row.started_at,
+            finished_at=row.finished_at,
+            details=row.details,
+        )
+        for row, environment in sync_rows
+    ]
+    items.extend(
+        ActivityEventResponse(
+            id=row.id,
+            kind="action",
+            environment_id=environment.id,
+            environment_name=environment.name,
+            service=row.service,
+            operation=row.action,
+            target=row.target,
+            status=row.status,
+            requested_by=row.requested_by,
+            summary=_action_summary(row.action, row.request_body, row.response_body),
+            created_at=row.created_at,
+            started_at=row.created_at,
+            finished_at=row.updated_at,
+            details={
+                "request": row.request_body,
+                "response": row.response_body,
+            },
+        )
+        for row, environment in action_rows
+    )
+    items.sort(key=lambda item: item.created_at, reverse=True)
+    return items[:limit]
 
 
 @router.get("/settings/runtime", response_model=RuntimeSettingsResponse)
@@ -359,7 +522,7 @@ def execute_action(
             environment_id=environment.id,
             service=service,
             action=payload.action,
-            target=payload.target_id,
+            target=payload.target_name or payload.target_id,
             requested_by=user.username,
             status="completed",
             request_body=payload.payload,
@@ -371,7 +534,7 @@ def execute_action(
             environment_id=environment.id,
             service="unknown",
             action=payload.action,
-            target=payload.target_id,
+            target=payload.target_name or payload.target_id,
             requested_by=user.username,
             status="failed",
             request_body=payload.payload,

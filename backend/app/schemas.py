@@ -161,6 +161,8 @@ class DashboardResponse(BaseModel):
     critical_count: int
     compliance: dict[str, int]
     services: dict[str, dict[str, int]]
+    resource_breakdown: dict[str, int] = Field(default_factory=dict)
+    integration_breakdown: dict[str, int] = Field(default_factory=dict)
     environment_summaries: list[EnvironmentSummary]
 
 
@@ -169,6 +171,7 @@ class SyncExecutionResponse(BaseModel):
     environment_id: str
     status: str
     requested_by: str
+    created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
     error_text: str | None
@@ -206,10 +209,34 @@ class SearchResult(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ActivityEventResponse(BaseModel):
+    id: str
+    kind: Literal["sync", "action"]
+    environment_id: str
+    environment_name: str
+    service: str
+    operation: str
+    target: str
+    status: str
+    requested_by: str
+    summary: str
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
 class RemoteActionRequest(BaseModel):
     environment_id: str
-    action: Literal["launch_job_template", "set_activation_state", "sync_repository"]
+    action: Literal[
+        "launch_job_template",
+        "launch_workflow_job_template",
+        "set_activation_state",
+        "sync_project",
+        "sync_repository",
+    ]
     target_id: str
+    target_name: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
     path_override: str | None = None
 

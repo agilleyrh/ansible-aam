@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { api } from "../api";
 import { EmptyState } from "../components/empty-state";
@@ -29,7 +30,7 @@ export function SearchPage() {
         <div>
           <p className="eyebrow">Search</p>
           <h2>Search the collected automation inventory</h2>
-          <p className="page-header__description">Search job templates, inventories, projects, rulebook activations, and repository content across all synced AAP environments.</p>
+          <p className="page-header__description">Search templates, workflows, projects, credentials, activations, repositories, and collections across all synced AAP environments.</p>
         </div>
       </section>
 
@@ -63,10 +64,17 @@ export function SearchPage() {
               <tbody>
                 {results.map((result) => (
                   <tr key={result.id}>
-                    <td>{result.name}</td>
-                    <td>{result.environment_name}</td>
+                    <td>
+                      <div className="table-primary">
+                        <span>{result.name}</span>
+                        <span>{result.url ?? result.id}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <Link to={`/environments/${result.environment_id}`}>{result.environment_name}</Link>
+                    </td>
                     <td>{result.service}</td>
-                    <td>{result.resource_type}</td>
+                    <td>{result.resource_type.replaceAll("_", " ")}</td>
                     <td>
                       <StatusPill status={result.status} />
                     </td>

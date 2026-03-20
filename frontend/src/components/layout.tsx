@@ -3,10 +3,17 @@ import { NavLink, Outlet } from "react-router-dom";
 const links = [
   { to: "/", label: "Overview" },
   { to: "/environments", label: "Environments" },
+  { to: "/activity", label: "Activity" },
   { to: "/policies", label: "Governance" },
   { to: "/topology", label: "Topology" },
   { to: "/search", label: "Search" },
-  { to: "/settings", label: "Administration" },
+  { to: "/settings", label: "Runtime settings" },
+];
+
+const quickLinks = [
+  { to: "/environments", label: "Environment registry" },
+  { to: "/activity", label: "Activity stream" },
+  { to: "/settings", label: "Runtime settings" },
 ];
 
 export function AppLayout() {
@@ -20,11 +27,13 @@ export function AppLayout() {
             <h1>Advanced Automation Manager</h1>
           </div>
         </div>
-        <div className="masthead__meta">
-          <span>Fleet control plane</span>
-          <span>Gateway-aware RBAC</span>
-          <span>Remote AAP registration</span>
-        </div>
+        <nav className="masthead__quicklinks" aria-label="Quick navigation">
+          {quickLinks.map((link) => (
+            <NavLink key={link.to} to={link.to} className="masthead__quicklink">
+              {link.label}
+            </NavLink>
+          ))}
+        </nav>
       </header>
 
       <div className="workspace">

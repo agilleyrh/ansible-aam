@@ -60,7 +60,7 @@ export function PoliciesPage() {
             <p>Recent compliance outcomes across every managed environment.</p>
           </div>
           <Link className="secondary-button secondary-button--small" to="/environments">
-            Manage environments
+            Open environment registry
           </Link>
         </div>
         {results.length === 0 ? (

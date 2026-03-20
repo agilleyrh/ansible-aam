@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 import { AppLayout } from "./components/layout";
+import { ActivityPage } from "./pages/activity";
 import { DashboardPage } from "./pages/dashboard";
 import { EnvironmentDetailPage } from "./pages/environment-detail";
 import { EnvironmentsPage } from "./pages/environments";
@@ -17,6 +18,7 @@ export function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/environments" element={<EnvironmentsPage />} />
           <Route path="/environments/:environmentId" element={<EnvironmentDetailPage />} />
+          <Route path="/activity" element={<ActivityPage />} />
           <Route path="/policies" element={<PoliciesPage />} />
           <Route path="/topology" element={<TopologyPage />} />
           <Route path="/search" element={<SearchPage />} />

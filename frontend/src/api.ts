@@ -1,10 +1,13 @@
 import type {
+  ActivityEvent,
   DashboardResponse,
   EnvironmentDetail,
   EnvironmentMutationPayload,
   EnvironmentSummary,
   Policy,
   PolicyResult,
+  RemoteActionRequest,
+  RemoteActionResponse,
   RuntimeSettings,
   SearchResult,
   SyncExecution,
@@ -74,5 +77,9 @@ export const api = {
   policyResults: () => request<PolicyResult[]>("/policy-results"),
   search: (q: string) => request<SearchResult[]>(`/search?q=${encodeURIComponent(q)}`),
   syncExecutions: () => request<SyncExecution[]>("/sync-executions"),
+  activity: (environmentId?: string) =>
+    request<ActivityEvent[]>(`/activity${environmentId ? `?environment_id=${encodeURIComponent(environmentId)}` : ""}`),
   runtimeSettings: () => request<RuntimeSettings>("/settings/runtime"),
+  executeAction: (payload: RemoteActionRequest) =>
+    request<RemoteActionResponse>("/actions", { method: "POST", body: payload }),
 };

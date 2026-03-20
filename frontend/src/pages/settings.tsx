@@ -1,37 +1,37 @@
 import { useEffect, useState } from "react";
 
 import { api } from "../api";
+import { ActivityTable } from "../components/activity-table";
 import { EmptyState } from "../components/empty-state";
-import { StatusPill } from "../components/status-pill";
-import type { RuntimeSettings, SyncExecution } from "../types";
+import type { ActivityEvent, RuntimeSettings } from "../types";
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<RuntimeSettings | null>(null);
-  const [executions, setExecutions] = useState<SyncExecution[]>([]);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.runtimeSettings(), api.syncExecutions()])
-      .then(([runtime, history]) => {
+    Promise.all([api.runtimeSettings(), api.activity()])
+      .then(([runtime, stream]) => {
         setSettings(runtime);
-        setExecutions(history);
+        setActivity(stream);
       })
       .catch((err: Error) => setError(err.message));
   }, []);
 
   if (error) {
-    return <section className="card">Administration unavailable: {error}</section>;
+    return <section className="card">Runtime settings unavailable: {error}</section>;
   }
 
   if (!settings) {
-    return <section className="card">Loading administration settings...</section>;
+    return <section className="card">Loading runtime settings...</section>;
   }
 
   return (
     <div className="page-stack">
       <section className="page-header">
         <div>
-          <p className="eyebrow">Administration</p>
+          <p className="eyebrow">Runtime settings</p>
           <h2>Runtime settings and sync activity</h2>
           <p className="page-header__description">Review the hub’s current operating defaults, trusted headers, and the latest fleet synchronization jobs.</p>
         </div>
@@ -115,41 +115,14 @@ export function SettingsPage() {
       <section className="card">
         <div className="card__header">
           <div>
-            <h3>Recent sync activity</h3>
-            <p>Track queued, completed, and failed collection jobs across all registered environments.</p>
+            <h3>Recent platform activity</h3>
+            <p>Review sync jobs and operator actions recorded by the control hub.</p>
           </div>
         </div>
-        {executions.length === 0 ? (
-          <EmptyState title="No sync activity yet" description="Register an AAP environment and queue its first sync to populate the activity stream." />
+        {activity.length === 0 ? (
+          <EmptyState title="No activity yet" description="Register an AAP environment and queue its first sync to populate the activity stream." />
         ) : (
-          <div className="table-shell">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Environment</th>
-                  <th>Status</th>
-                  <th>Requested by</th>
-                  <th>Started</th>
-                  <th>Finished</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {executions.map((execution) => (
-                  <tr key={execution.id}>
-                    <td>{execution.environment_id}</td>
-                    <td>
-                      <StatusPill status={execution.status} />
-                    </td>
-                    <td>{execution.requested_by}</td>
-                    <td>{execution.started_at ? new Date(execution.started_at).toLocaleString() : "Not started"}</td>
-                    <td>{execution.finished_at ? new Date(execution.finished_at).toLocaleString() : "In progress"}</td>
-                    <td>{execution.error_text ?? JSON.stringify(execution.details)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ActivityTable items={activity.slice(0, 12)} />
         )}
       </section>
     </div>

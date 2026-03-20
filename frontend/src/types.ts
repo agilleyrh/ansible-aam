@@ -82,6 +82,8 @@ export type DashboardResponse = {
   critical_count: number;
   compliance: Record<string, number>;
   services: Record<string, Record<string, number>>;
+  resource_breakdown: Record<string, number>;
+  integration_breakdown: Record<string, number>;
   environment_summaries: EnvironmentSummary[];
 };
 
@@ -141,6 +143,7 @@ export type SyncExecution = {
   environment_id: string;
   status: string;
   requested_by: string;
+  created_at: string;
   started_at: string | null;
   finished_at: string | null;
   error_text: string | null;
@@ -161,4 +164,45 @@ export type RuntimeSettings = {
   search_result_limit: number;
   request_timeout_seconds: number;
   trusted_headers: Record<string, string>;
+};
+
+export type ActivityEvent = {
+  id: string;
+  kind: "sync" | "action";
+  environment_id: string;
+  environment_name: string;
+  service: string;
+  operation: string;
+  target: string;
+  status: string;
+  requested_by: string;
+  summary: string;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  details: Record<string, unknown>;
+};
+
+export type RemoteActionName =
+  | "launch_job_template"
+  | "launch_workflow_job_template"
+  | "set_activation_state"
+  | "sync_project"
+  | "sync_repository";
+
+export type RemoteActionRequest = {
+  environment_id: string;
+  action: RemoteActionName;
+  target_id: string;
+  target_name?: string | null;
+  payload?: Record<string, unknown>;
+  path_override?: string | null;
+};
+
+export type RemoteActionResponse = {
+  action_id: string;
+  status: string;
+  service: string;
+  target: string;
+  response_body: Record<string, unknown>;
 };

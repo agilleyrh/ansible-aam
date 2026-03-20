@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 
+import { buildCapabilities, parseCapabilityProfile, type ManagementMode } from "../capabilities";
 import type { EnvironmentAuthMode, EnvironmentDetail, EnvironmentMutationPayload } from "../types";
 
 type SubmitOptions = {
@@ -37,7 +38,27 @@ type FormState = {
   access_token: string;
   verify_ssl: boolean;
   sync_interval_minutes: string;
-  capabilities: string;
+  management_mode: ManagementMode;
+  operator_namespace: string;
+  cluster_namespace: string;
+  terraform_workspace: string;
+  backstage_entity_ref: string;
+  mcp_endpoint: string;
+  runner_enabled: boolean;
+  builder_pipeline_enabled: boolean;
+  receptor_mesh_enabled: boolean;
+  receptor_node_count: string;
+  execution_environments_expected: boolean;
+  remote_execution_expected: boolean;
+  content_signing_enabled: boolean;
+  content_signing_expected: boolean;
+  gateway_enforced: boolean;
+  developer_portal_expected: boolean;
+  mcp_expected: boolean;
+  metrics_enabled: boolean;
+  automation_reports_enabled: boolean;
+  ai_assistant_enabled: boolean;
+  extra_capabilities: string;
   service_paths: string;
 };
 
@@ -63,6 +84,7 @@ function splitCsv(value: string): string[] {
 }
 
 function buildInitialState(initialValue?: EnvironmentDetail | null): FormState {
+  const { profile, extraCapabilities } = parseCapabilityProfile(initialValue?.capabilities);
   return {
     name: initialValue?.name ?? "",
     slug: initialValue?.slug ?? "",
@@ -82,7 +104,27 @@ function buildInitialState(initialValue?: EnvironmentDetail | null): FormState {
     access_token: "",
     verify_ssl: initialValue?.verify_ssl ?? true,
     sync_interval_minutes: String(initialValue?.sync_interval_minutes ?? 5),
-    capabilities: initialValue ? toPrettyJson(initialValue.capabilities) : emptyJson,
+    management_mode: profile.management_mode,
+    operator_namespace: profile.operator_namespace,
+    cluster_namespace: profile.cluster_namespace,
+    terraform_workspace: profile.terraform_workspace,
+    backstage_entity_ref: profile.backstage_entity_ref,
+    mcp_endpoint: profile.mcp_endpoint,
+    runner_enabled: profile.runner_enabled,
+    builder_pipeline_enabled: profile.builder_pipeline_enabled,
+    receptor_mesh_enabled: profile.receptor_mesh_enabled,
+    receptor_node_count: profile.receptor_node_count ? String(profile.receptor_node_count) : "",
+    execution_environments_expected: profile.execution_environments_expected,
+    remote_execution_expected: profile.remote_execution_expected,
+    content_signing_enabled: profile.content_signing_enabled,
+    content_signing_expected: profile.content_signing_expected,
+    gateway_enforced: profile.gateway_enforced,
+    developer_portal_expected: profile.developer_portal_expected,
+    mcp_expected: profile.mcp_expected,
+    metrics_enabled: profile.metrics_enabled,
+    automation_reports_enabled: profile.automation_reports_enabled,
+    ai_assistant_enabled: profile.ai_assistant_enabled,
+    extra_capabilities: toPrettyJson(extraCapabilities),
     service_paths: initialValue ? toPrettyJson(initialValue.service_paths) : emptyJson,
   };
 }
@@ -149,7 +191,31 @@ export function EnvironmentForm({
         client_id: form.client_id.trim() || null,
         verify_ssl: form.verify_ssl,
         sync_interval_minutes: Number.parseInt(form.sync_interval_minutes, 10) || 5,
-        capabilities: parseObjectField(form.capabilities, "Capabilities"),
+        capabilities: buildCapabilities(
+          {
+            management_mode: form.management_mode,
+            operator_namespace: form.operator_namespace.trim(),
+            cluster_namespace: form.cluster_namespace.trim(),
+            terraform_workspace: form.terraform_workspace.trim(),
+            backstage_entity_ref: form.backstage_entity_ref.trim(),
+            mcp_endpoint: form.mcp_endpoint.trim(),
+            runner_enabled: form.runner_enabled,
+            builder_pipeline_enabled: form.builder_pipeline_enabled,
+            receptor_mesh_enabled: form.receptor_mesh_enabled,
+            receptor_node_count: Number.parseInt(form.receptor_node_count, 10) || null,
+            execution_environments_expected: form.execution_environments_expected,
+            remote_execution_expected: form.remote_execution_expected,
+            content_signing_enabled: form.content_signing_enabled,
+            content_signing_expected: form.content_signing_expected,
+            gateway_enforced: form.gateway_enforced,
+            developer_portal_expected: form.developer_portal_expected,
+            mcp_expected: form.mcp_expected,
+            metrics_enabled: form.metrics_enabled,
+            automation_reports_enabled: form.automation_reports_enabled,
+            ai_assistant_enabled: form.ai_assistant_enabled,
+          },
+          parseObjectField(form.extra_capabilities, "Additional capabilities"),
+        ),
         service_paths: parseObjectField(form.service_paths, "Service path overrides"),
       };
 
@@ -312,12 +378,124 @@ export function EnvironmentForm({
 
         <div className="form-section">
           <div className="form-section__header">
+            <h4>Provisioning and lifecycle</h4>
+            <p>Declare how this estate is installed and managed across the AAP ecosystem.</p>
+          </div>
+          <div className="form-grid form-grid--two">
+            <label className="field-group">
+              <span className="field-label">Management mode</span>
+              <select className="select-input" value={form.management_mode} onChange={(event) => updateField("management_mode", event.target.value as ManagementMode)}>
+                <option value="manual">Manual</option>
+                <option value="operator">Operator</option>
+                <option value="terraform">Terraform</option>
+                <option value="collection">Ansible collection</option>
+              </select>
+            </label>
+            <label className="field-group">
+              <span className="field-label">Operator namespace</span>
+              <input className="text-input" value={form.operator_namespace} onChange={(event) => updateField("operator_namespace", event.target.value)} placeholder="aap" />
+            </label>
+            <label className="field-group">
+              <span className="field-label">Cluster namespace</span>
+              <input className="text-input" value={form.cluster_namespace} onChange={(event) => updateField("cluster_namespace", event.target.value)} placeholder="automation-platform" />
+            </label>
+            <label className="field-group">
+              <span className="field-label">Terraform workspace</span>
+              <input className="text-input" value={form.terraform_workspace} onChange={(event) => updateField("terraform_workspace", event.target.value)} placeholder="aap-prod-east" />
+            </label>
+          </div>
+        </div>
+
+        <div className="form-section">
+          <div className="form-section__header">
+            <h4>Runtime and content operations</h4>
+            <p>Track the execution and trust surfaces shaped by runner, builder, execution environments, and receptor.</p>
+          </div>
+          <div className="form-grid form-grid--two">
+            <label className="checkbox-field">
+              <input type="checkbox" checked={form.runner_enabled} onChange={(event) => updateField("runner_enabled", event.target.checked)} />
+              <span>Ansible Runner is part of this estate</span>
+            </label>
+            <label className="checkbox-field">
+              <input type="checkbox" checked={form.builder_pipeline_enabled} onChange={(event) => updateField("builder_pipeline_enabled", event.target.checked)} />
+              <span>Execution environment builder pipeline exists</span>
+            </label>
+            <label className="checkbox-field">
+              <input type="checkbox" checked={form.execution_environments_expected} onChange={(event) => updateField("execution_environments_expected", event.target.checked)} />
+              <span>Execution environments are expected</span>
+            </label>
+            <label className="checkbox-field">
+              <input type="checkbox" checked={form.remote_execution_expected} onChange={(event) => updateField("remote_execution_expected", event.target.checked)} />
+              <span>Remote execution is expected</span>
+            </label>
+            <label className="checkbox-field">
+              <input type="checkbox" checked={form.receptor_mesh_enabled} onChange={(event) => updateField("receptor_mesh_enabled", event.target.checked)} />
+              <span>Receptor mesh is declared</span>
+            </label>
+            <label className="field-group">
+              <span className="field-label">Receptor node count</span>
+              <input className="text-input" type="number" min={0} value={form.receptor_node_count} onChange={(event) => updateField("receptor_node_count", event.target.value)} />
+            </label>
+            <label className="checkbox-field">
+              <input type="checkbox" checked={form.content_signing_enabled} onChange={(event) => updateField("content_signing_enabled", event.target.checked)} />
+              <span>Content signing is enabled</span>
+            </label>
+            <label className="checkbox-field">
+              <input type="checkbox" checked={form.content_signing_expected} onChange={(event) => updateField("content_signing_expected", event.target.checked)} />
+              <span>Content signing is required</span>
+            </label>
+            <label className="checkbox-field">
+              <input type="checkbox" checked={form.gateway_enforced} onChange={(event) => updateField("gateway_enforced", event.target.checked)} />
+              <span>Gateway-only component access is expected</span>
+            </label>
+            <label className="checkbox-field">
+              <input type="checkbox" checked={form.metrics_enabled} onChange={(event) => updateField("metrics_enabled", event.target.checked)} />
+              <span>Metrics service or utility is enabled</span>
+            </label>
+            <label className="checkbox-field">
+              <input type="checkbox" checked={form.automation_reports_enabled} onChange={(event) => updateField("automation_reports_enabled", event.target.checked)} />
+              <span>Automation reports are enabled</span>
+            </label>
+            <label className="checkbox-field">
+              <input type="checkbox" checked={form.ai_assistant_enabled} onChange={(event) => updateField("ai_assistant_enabled", event.target.checked)} />
+              <span>AI assistance is enabled</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="form-section">
+          <div className="form-section__header">
+            <h4>Developer portal and API integrations</h4>
+            <p>Capture the platform integration points exposed through Backstage plugins, MCP, and related tooling.</p>
+          </div>
+          <div className="form-grid form-grid--two">
+            <label className="checkbox-field">
+              <input type="checkbox" checked={form.developer_portal_expected} onChange={(event) => updateField("developer_portal_expected", event.target.checked)} />
+              <span>Developer portal registration is expected</span>
+            </label>
+            <label className="field-group">
+              <span className="field-label">Backstage entity reference</span>
+              <input className="text-input" value={form.backstage_entity_ref} onChange={(event) => updateField("backstage_entity_ref", event.target.value)} placeholder="component:default/aap-prod-east" />
+            </label>
+            <label className="checkbox-field">
+              <input type="checkbox" checked={form.mcp_expected} onChange={(event) => updateField("mcp_expected", event.target.checked)} />
+              <span>MCP access is expected</span>
+            </label>
+            <label className="field-group">
+              <span className="field-label">MCP endpoint</span>
+              <input className="text-input" value={form.mcp_endpoint} onChange={(event) => updateField("mcp_endpoint", event.target.value)} placeholder="https://aap.example.com/mcp" />
+            </label>
+          </div>
+        </div>
+
+        <div className="form-section">
+          <div className="form-section__header">
             <h4>Advanced service behavior</h4>
-            <p>Override discovered capabilities or service paths when the remote AAP deployment differs from defaults.</p>
+            <p>Override discovered service paths or preserve extra capability flags not modeled by the structured form.</p>
           </div>
           <label className="field-group">
-            <span className="field-label">Capabilities (JSON)</span>
-            <textarea className="text-area text-area--code" rows={5} value={form.capabilities} onChange={(event) => updateField("capabilities", event.target.value)} />
+            <span className="field-label">Additional capabilities (JSON)</span>
+            <textarea className="text-area text-area--code" rows={5} value={form.extra_capabilities} onChange={(event) => updateField("extra_capabilities", event.target.value)} />
           </label>
           <label className="field-group">
             <span className="field-label">Service path overrides (JSON)</span>

@@ -2,19 +2,62 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../api";
+import { describeCapabilityProfile, parseCapabilityProfile } from "../capabilities";
+import { ActivityTable } from "../components/activity-table";
 import { EmptyState } from "../components/empty-state";
 import { EnvironmentForm } from "../components/environment-form";
 import { StatCard } from "../components/stat-card";
 import { StatusPill } from "../components/status-pill";
-import type { EnvironmentDetail, EnvironmentMutationPayload, SyncExecution } from "../types";
+import type { ActivityEvent, EnvironmentDetail, EnvironmentMutationPayload, RemoteActionName, Resource } from "../types";
+
+type ResourceAction = {
+  action: RemoteActionName;
+  label: string;
+  payload?: Record<string, unknown>;
+};
+
+function buildResourceAction(resource: Resource): ResourceAction | null {
+  if (resource.service === "controller" && resource.resource_type === "job_template") {
+    return { action: "launch_job_template", label: "Launch template" };
+  }
+  if (resource.service === "controller" && resource.resource_type === "workflow_job_template") {
+    return { action: "launch_workflow_job_template", label: "Launch workflow" };
+  }
+  if (resource.service === "controller" && resource.resource_type === "project") {
+    return { action: "sync_project", label: "Sync project" };
+  }
+  if (resource.service === "eda" && resource.resource_type === "activation") {
+    const enabled = resource.status !== "disabled";
+    return {
+      action: "set_activation_state",
+      label: enabled ? "Disable activation" : "Enable activation",
+      payload: { enabled: !enabled },
+    };
+  }
+  if (resource.service === "hub" && resource.resource_type === "repository") {
+    return { action: "sync_repository", label: "Sync repository" };
+  }
+  return null;
+}
+
+function actionSuccessMessage(action: ResourceAction, resource: Resource) {
+  if (action.action === "set_activation_state") {
+    return `${action.payload?.enabled ? "Enabled" : "Disabled"} ${resource.name}.`;
+  }
+  return `${action.label} queued for ${resource.name}.`;
+}
 
 export function EnvironmentDetailPage() {
   const { environmentId } = useParams();
   const navigate = useNavigate();
   const [environment, setEnvironment] = useState<EnvironmentDetail | null>(null);
-  const [executions, setExecutions] = useState<SyncExecution[]>([]);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [actioningId, setActioningId] = useState<string | null>(null);
+  const [serviceFilter, setServiceFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -23,9 +66,9 @@ export function EnvironmentDetailPage() {
       return;
     }
 
-    const [detail, history] = await Promise.all([api.environment(environmentId), api.syncExecutions()]);
+    const [detail, stream] = await Promise.all([api.environment(environmentId), api.activity(environmentId)]);
     setEnvironment(detail);
-    setExecutions(history.filter((entry) => entry.environment_id === environmentId));
+    setActivity(stream);
   }
 
   useEffect(() => {
@@ -104,6 +147,31 @@ export function EnvironmentDetailPage() {
     }
   }
 
+  async function handleResourceAction(resource: Resource, action: ResourceAction) {
+    if (!environmentId) {
+      return;
+    }
+
+    setActioningId(`${resource.id}:${action.action}`);
+    setError(null);
+    setMessage(null);
+    try {
+      await api.executeAction({
+        environment_id: environmentId,
+        action: action.action,
+        target_id: resource.external_id,
+        target_name: resource.name,
+        payload: action.payload,
+      });
+      setMessage(actionSuccessMessage(action, resource));
+      await loadEnvironment();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Unable to run ${action.label.toLowerCase()}.`);
+    } finally {
+      setActioningId(null);
+    }
+  }
+
   if (error && !environment) {
     return <section className="card">Environment unavailable: {error}</section>;
   }
@@ -111,6 +179,43 @@ export function EnvironmentDetailPage() {
   if (!environment) {
     return <section className="card">Loading environment...</section>;
   }
+
+  const services = Array.from(new Set(environment.resources.map((resource) => resource.service))).sort();
+  const resourceTypes = Array.from(new Set(environment.resources.map((resource) => resource.resource_type))).sort();
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredResources = environment.resources.filter((resource) => {
+    if (serviceFilter !== "all" && resource.service !== serviceFilter) {
+      return false;
+    }
+    if (typeFilter !== "all" && resource.resource_type !== typeFilter) {
+      return false;
+    }
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [resource.name, resource.external_id, resource.resource_type, resource.service, resource.namespace]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(normalizedQuery);
+  });
+
+  const templateCount = environment.resources.filter((resource) =>
+    resource.resource_type === "job_template" || resource.resource_type === "workflow_job_template",
+  ).length;
+  const projectCount = environment.resources.filter((resource) => resource.resource_type === "project").length;
+  const activationCount = environment.resources.filter((resource) => resource.resource_type === "activation").length;
+  const hubContentCount = environment.resources.filter((resource) => resource.service === "hub").length;
+  const { profile: capabilityProfile, extraCapabilities } = parseCapabilityProfile(environment.capabilities);
+  const capabilitySummary = describeCapabilityProfile(capabilityProfile);
+  const endpointLinks = [
+    { label: "Open platform URL", href: environment.platform_url },
+    { label: "Open gateway URL", href: environment.gateway_url },
+    { label: "Open controller URL", href: environment.controller_url },
+    { label: "Open EDA URL", href: environment.eda_url },
+    { label: "Open automation hub URL", href: environment.hub_url },
+  ].filter((item): item is { label: string; href: string } => Boolean(item.href));
 
   return (
     <div className="page-stack">
@@ -123,10 +228,10 @@ export function EnvironmentDetailPage() {
         <div className="page-header__actions">
           <StatusPill status={environment.status} />
           <button className="secondary-button" type="button" disabled={syncing} onClick={handleSync}>
-            {syncing ? "Queueing..." : "Sync now"}
+            {syncing ? "Queueing..." : "Queue sync"}
           </button>
           <button className="danger-button" type="button" disabled={busy} onClick={handleDelete}>
-            Delete
+            Delete environment
           </button>
         </div>
       </section>
@@ -140,6 +245,13 @@ export function EnvironmentDetailPage() {
         <StatCard label="Health score" value={String(environment.summary.health_score ?? "n/a")} detail="Calculated from collected service health" />
         <StatCard label="Tracked resources" value={String(environment.resources.length)} detail="Current inventory stored in the hub" />
         <StatCard label="Last sync" value={environment.last_synced_at ? new Date(environment.last_synced_at).toLocaleString() : "Never"} detail="Latest successful collection timestamp" />
+      </section>
+
+      <section className="card-grid card-grid--four">
+        <StatCard label="Templates" value={templateCount} detail="Job templates and workflow templates" />
+        <StatCard label="Projects" value={projectCount} detail="Controller and EDA project content" />
+        <StatCard label="Activations" value={activationCount} detail="EDA rulebook activations currently tracked" />
+        <StatCard label="Hub content" value={hubContentCount} detail="Repositories and collections available from automation hub" />
       </section>
 
       <section className="page-columns">
@@ -185,50 +297,28 @@ export function EnvironmentDetailPage() {
             </div>
           </dl>
           <div className="link-cluster">
-            {[environment.platform_url, environment.gateway_url, environment.controller_url, environment.eda_url, environment.hub_url]
-              .filter((value): value is string => Boolean(value))
-              .map((value) => (
-                <a key={value} className="secondary-button secondary-button--small" href={value} target="_blank" rel="noreferrer">
-                  Open endpoint
-                </a>
-              ))}
+            {endpointLinks.map((item) => (
+              <a key={item.label} className="secondary-button secondary-button--small" href={item.href} target="_blank" rel="noreferrer">
+                {item.label}
+              </a>
+            ))}
           </div>
         </article>
 
         <article className="card">
           <div className="card__header">
             <div>
-              <h3>Recent sync activity</h3>
-              <p>Latest collection jobs for this environment.</p>
+              <h3>Recent activity stream</h3>
+              <p>Sync runs and remote actions scoped to this environment.</p>
             </div>
+            <Link className="secondary-button secondary-button--small" to="/activity">
+              View fleet activity
+            </Link>
           </div>
-          {executions.length === 0 ? (
-            <EmptyState title="No sync jobs yet" description="Queue the first sync to collect platform health, resources, and policy state." action={<button className="primary-button" type="button" onClick={handleSync}>Sync now</button>} />
+          {activity.length === 0 ? (
+            <EmptyState title="No activity yet" description="Queue a sync or run an action against a collected resource to populate the stream." action={<button className="primary-button" type="button" onClick={handleSync}>Queue sync</button>} />
           ) : (
-            <div className="table-shell">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Status</th>
-                    <th>Requested by</th>
-                    <th>Started</th>
-                    <th>Finished</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {executions.slice(0, 5).map((execution) => (
-                    <tr key={execution.id}>
-                      <td>
-                        <StatusPill status={execution.status} />
-                      </td>
-                      <td>{execution.requested_by}</td>
-                      <td>{execution.started_at ? new Date(execution.started_at).toLocaleString() : "Queued"}</td>
-                      <td>{execution.finished_at ? new Date(execution.finished_at).toLocaleString() : execution.error_text ?? "Running"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ActivityTable items={activity.slice(0, 8)} showEnvironment={false} />
           )}
         </article>
       </section>
@@ -244,6 +334,39 @@ export function EnvironmentDetailPage() {
         onSubmit={handleSave}
       />
 
+      <section className="page-columns">
+        <article className="card">
+          <div className="card__header">
+            <div>
+              <h3>Platform integration profile</h3>
+              <p>Lifecycle, runtime, portal, and trust capabilities mapped from the broader Ansible platform ecosystem.</p>
+            </div>
+          </div>
+          <dl className="details-list">
+            {capabilitySummary.map((item) => (
+              <div key={item.label}>
+                <dt>{item.label}</dt>
+                <dd>{item.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </article>
+
+        <article className="card">
+          <div className="card__header">
+            <div>
+              <h3>Additional capability flags</h3>
+              <p>Any extra capability settings that do not yet map to the structured profile.</p>
+            </div>
+          </div>
+          {Object.keys(extraCapabilities).length === 0 ? (
+            <EmptyState title="No additional capability flags" description="All current capability settings are represented by the structured integration profile." />
+          ) : (
+            <pre className="rule-block">{JSON.stringify(extraCapabilities, null, 2)}</pre>
+          )}
+        </article>
+      </section>
+
       <section className="card">
         <div className="card__header">
           <div>
@@ -251,7 +374,7 @@ export function EnvironmentDetailPage() {
             <p>Collected health summaries for each registered AAP component.</p>
           </div>
           <Link className="secondary-button secondary-button--small" to="/topology">
-            Open topology
+            View topology
           </Link>
         </div>
 
@@ -283,44 +406,84 @@ export function EnvironmentDetailPage() {
         <div className="card__header">
           <div>
             <h3>Tracked inventory</h3>
-            <p>Resources collected from controller, EDA, and automation hub services.</p>
+            <p>Controller, EDA, and automation hub resources with the direct actions that map to upstream AAP workflows.</p>
           </div>
         </div>
 
         {environment.resources.length === 0 ? (
           <EmptyState title="No inventory collected yet" description="Queue a sync after the endpoints and credentials are valid to populate managed resources." />
         ) : (
-          <div className="table-shell">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Service</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Last seen</th>
-                </tr>
-              </thead>
-              <tbody>
-                {environment.resources.map((resource) => (
-                  <tr key={resource.id}>
-                    <td>
-                      <div className="table-primary">
-                        <span>{resource.name}</span>
-                        <span>{resource.external_id}</span>
-                      </div>
-                    </td>
-                    <td>{resource.service}</td>
-                    <td>{resource.resource_type}</td>
-                    <td>
-                      <StatusPill status={resource.status} />
-                    </td>
-                    <td>{new Date(resource.last_seen_at).toLocaleString()}</td>
-                  </tr>
+          <>
+            <div className="toolbar toolbar--form toolbar--filters">
+              <input value={query} onChange={(event) => setQuery(event.target.value)} className="text-input text-input--search" placeholder="Filter resources by name, ID, type, service, or namespace" />
+              <select value={serviceFilter} onChange={(event) => setServiceFilter(event.target.value)} className="select-input select-input--compact">
+                <option value="all">All services</option>
+                {services.map((service) => (
+                  <option key={service} value={service}>
+                    {service}
+                  </option>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </select>
+              <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="select-input select-input--compact">
+                <option value="all">All resource types</option>
+                {resourceTypes.map((resourceType) => (
+                  <option key={resourceType} value={resourceType}>
+                    {resourceType.replaceAll("_", " ")}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {filteredResources.length === 0 ? (
+              <EmptyState title="No resources match the current filters" description="Broaden the search, choose a different service, or queue a fresh sync." />
+            ) : (
+              <div className="table-shell">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Service</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                      <th>Last seen</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredResources.map((resource) => {
+                      const action = buildResourceAction(resource);
+                      const busyAction = action ? `${resource.id}:${action.action}` === actioningId : false;
+                      return (
+                        <tr key={resource.id}>
+                          <td>
+                            <div className="table-primary">
+                              <span>{resource.name}</span>
+                              <span>{[resource.namespace, resource.external_id].filter(Boolean).join(" · ")}</span>
+                            </div>
+                          </td>
+                          <td>{resource.service}</td>
+                          <td>{resource.resource_type.replaceAll("_", " ")}</td>
+                          <td>
+                            <StatusPill status={resource.status} />
+                          </td>
+                          <td>{new Date(resource.last_seen_at).toLocaleString()}</td>
+                          <td>
+                            {action ? (
+                              <button className="secondary-button secondary-button--small" type="button" disabled={busyAction} onClick={() => handleResourceAction(resource, action)}>
+                                {busyAction ? "Working..." : action.label}
+                              </button>
+                            ) : (
+                              <span className="table-muted">No direct action</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
       </section>
     </div>

@@ -2,21 +2,22 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../api";
+import { ActivityTable } from "../components/activity-table";
 import { EmptyState } from "../components/empty-state";
 import { StatCard } from "../components/stat-card";
 import { StatusPill } from "../components/status-pill";
-import type { DashboardResponse, SyncExecution } from "../types";
+import type { ActivityEvent, DashboardResponse } from "../types";
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
-  const [executions, setExecutions] = useState<SyncExecution[]>([]);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.dashboard(), api.syncExecutions()])
-      .then(([dashboard, history]) => {
+    Promise.all([api.dashboard(), api.activity()])
+      .then(([dashboard, stream]) => {
         setData(dashboard);
-        setExecutions(history);
+        setActivity(stream);
       })
       .catch((err: Error) => setError(err.message));
   }, []);
@@ -30,6 +31,12 @@ export function DashboardPage() {
   }
 
   const hasEnvironments = data.environment_count > 0;
+  const topResources = Object.entries(data.resource_breakdown)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 6);
+  const topIntegrations = Object.entries(data.integration_breakdown)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 6);
 
   return (
     <div className="page-stack">
@@ -41,10 +48,10 @@ export function DashboardPage() {
         </div>
         <div className="page-header__actions">
           <Link className="secondary-button" to="/settings">
-            Administration
+            View runtime settings
           </Link>
           <Link className="primary-button" to="/environments">
-            Register environment
+            Open environment registry
           </Link>
         </div>
       </section>
@@ -62,7 +69,7 @@ export function DashboardPage() {
           description="Register your first controller, gateway, EDA, or automation hub endpoint to populate dashboard health, topology, and governance data."
           action={
             <Link className="primary-button" to="/environments">
-              Open registration
+              Register first environment
             </Link>
           }
         />
@@ -116,6 +123,81 @@ export function DashboardPage() {
             </article>
           </section>
 
+          <section className="page-columns">
+            <article className="card">
+              <div className="card__header">
+                <div>
+                  <h3>Automation estate coverage</h3>
+                  <p>Resource types discovered from controller, EDA, and automation hub integrations.</p>
+                </div>
+                <Link className="secondary-button secondary-button--small" to="/search">
+                  Search inventory
+                </Link>
+              </div>
+              {topResources.length === 0 ? (
+                <EmptyState title="No inventory collected" description="Queue a sync to populate templates, projects, activations, repositories, and other tracked resources." />
+              ) : (
+                <div className="meter-stack">
+                  {topResources.map(([resourceType, count]) => (
+                    <div key={resourceType} className="meter-row">
+                      <span>{resourceType.replaceAll("_", " ")}</span>
+                      <div className="meter">
+                        <div className="meter__fill meter__fill--healthy" style={{ width: `${Math.min(count * 10, 100)}%` }} />
+                      </div>
+                      <strong>{count}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+
+            <article className="card">
+              <div className="card__header">
+                <div>
+                  <h3>Platform interface adoption</h3>
+                  <p>Provisioning, runtime, portal, and trust patterns derived from the broader Ansible platform repositories.</p>
+                </div>
+                <Link className="secondary-button secondary-button--small" to="/environments">
+                  Edit environment interfaces
+                </Link>
+              </div>
+              {topIntegrations.length === 0 ? (
+                <EmptyState title="No platform interfaces declared" description="Use the structured registration fields to declare operators, Terraform, runner, receptor, portal, and trust integrations." />
+              ) : (
+                <div className="meter-stack">
+                  {topIntegrations.map(([integration, count]) => (
+                    <div key={integration} className="meter-row">
+                      <span>{integration.replace("management:", "").replaceAll("_", " ")}</span>
+                      <div className="meter">
+                        <div className="meter__fill meter__fill--healthy" style={{ width: `${Math.min(count * 20, 100)}%` }} />
+                      </div>
+                      <strong>{count}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+          </section>
+
+          <section className="page-columns">
+            <article className="card">
+              <div className="card__header">
+                <div>
+                  <h3>Recent activity</h3>
+                  <p>Syncs and remote actions aligned to an AAP-style activity stream.</p>
+                </div>
+                <Link className="secondary-button secondary-button--small" to="/activity">
+                  View activity stream
+                </Link>
+              </div>
+              {activity.length === 0 ? (
+                <EmptyState title="No activity recorded" description="Register an environment, queue a sync, or launch a managed action to populate the feed." />
+              ) : (
+                <ActivityTable items={activity.slice(0, 6)} />
+              )}
+            </article>
+          </section>
+
           <section className="card">
             <div className="card__header">
               <div>
@@ -150,44 +232,6 @@ export function DashboardPage() {
                       <td>{environment.groupings.join(", ") || "Unassigned"}</td>
                     </tr>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="card">
-            <div className="card__header">
-              <div>
-                <h3>Recent sync jobs</h3>
-                <p>Latest collection activity across the fleet.</p>
-              </div>
-            </div>
-            <div className="table-shell">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Environment</th>
-                    <th>Status</th>
-                    <th>Requested by</th>
-                    <th>Started</th>
-                    <th>Finished</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {executions.slice(0, 6).map((execution) => {
-                    const environment = data.environment_summaries.find((item) => item.id === execution.environment_id);
-                    return (
-                      <tr key={execution.id}>
-                        <td>{environment?.name ?? execution.environment_id}</td>
-                        <td>
-                          <StatusPill status={execution.status} />
-                        </td>
-                        <td>{execution.requested_by}</td>
-                        <td>{execution.started_at ? new Date(execution.started_at).toLocaleString() : "Queued"}</td>
-                        <td>{execution.finished_at ? new Date(execution.finished_at).toLocaleString() : "Running"}</td>
-                      </tr>
-                    );
-                  })}
                 </tbody>
               </table>
             </div>
