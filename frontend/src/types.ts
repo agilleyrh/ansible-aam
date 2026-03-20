@@ -1,3 +1,5 @@
+export type EnvironmentAuthMode = "oauth2" | "service_account" | "header_passthrough";
+
 export type EnvironmentSummary = {
   id: string;
   name: string;
@@ -34,8 +36,43 @@ export type Resource = {
 };
 
 export type EnvironmentDetail = EnvironmentSummary & {
+  labels: Record<string, unknown>;
+  platform_url: string | null;
+  gateway_url: string;
+  controller_url: string | null;
+  eda_url: string | null;
+  hub_url: string | null;
+  auth_mode: EnvironmentAuthMode;
+  client_id: string | null;
+  verify_ssl: boolean;
+  sync_interval_minutes: number;
+  capabilities: Record<string, unknown>;
+  service_paths: Record<string, unknown>;
   snapshots: ServiceSnapshot[];
   resources: Resource[];
+};
+
+export type EnvironmentMutationPayload = {
+  name: string;
+  slug: string;
+  description: string;
+  owner: string;
+  tags: string[];
+  groupings: string[];
+  labels: Record<string, unknown>;
+  platform_url: string | null;
+  gateway_url: string;
+  controller_url: string | null;
+  eda_url: string | null;
+  hub_url: string | null;
+  auth_mode: EnvironmentAuthMode;
+  client_id: string | null;
+  client_secret?: string | null;
+  access_token?: string | null;
+  verify_ssl: boolean;
+  sync_interval_minutes: number;
+  capabilities: Record<string, unknown>;
+  service_paths: Record<string, unknown>;
 };
 
 export type DashboardResponse = {
@@ -99,3 +136,29 @@ export type TopologyResponse = {
   edges: TopologyEdge[];
 };
 
+export type SyncExecution = {
+  id: string;
+  environment_id: string;
+  status: string;
+  requested_by: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error_text: string | null;
+  details: Record<string, unknown>;
+};
+
+export type SyncRequestResponse = {
+  job_id: string;
+  status: string;
+};
+
+export type RuntimeSettings = {
+  environment: string;
+  api_prefix: string;
+  cors_origins: string[];
+  gateway_trusted_proxy: boolean;
+  default_sync_interval_minutes: number;
+  search_result_limit: number;
+  request_timeout_seconds: number;
+  trusted_headers: Record<string, string>;
+};

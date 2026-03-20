@@ -1,79 +1,100 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { api } from "../api";
+import { EmptyState } from "../components/empty-state";
 import { StatusPill } from "../components/status-pill";
 import type { Policy, PolicyResult } from "../types";
 
 export function PoliciesPage() {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [results, setResults] = useState<PolicyResult[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.policies().then((value) => setPolicies(value as Policy[]));
-    api.policyResults().then((value) => setResults(value as PolicyResult[]));
+    Promise.all([api.policies(), api.policyResults()])
+      .then(([policyList, resultList]) => {
+        setPolicies(policyList);
+        setResults(resultList);
+      })
+      .catch((err: Error) => setError(err.message));
   }, []);
+
+  if (error) {
+    return <section className="card">Governance unavailable: {error}</section>;
+  }
 
   return (
     <div className="page-stack">
-      <section className="section-header">
+      <section className="page-header">
         <div>
           <p className="eyebrow">Governance</p>
-          <h2>Automation guardrails modeled after ACM policies.</h2>
+          <h2>Fleet policies and compliance results</h2>
+          <p className="page-header__description">Review policy definitions, severity, and the latest compliance outcomes reported by the scheduler and sync worker.</p>
         </div>
-        <p className="section-header__aside">
-          Evaluate version drift, sync freshness, service enablement, and controller reliability from one place.
-        </p>
       </section>
 
-      <section className="policy-grid">
-        {policies.map((policy) => (
-          <article key={policy.id} className="panel policy-card">
-            <div className="policy-card__header">
-              <div>
-                <h3>{policy.name}</h3>
-                <p>{policy.description}</p>
+      {policies.length === 0 ? (
+        <EmptyState title="No governance policies available" description="Once the backend seeds or creates policies, they will appear here with fleet evaluation results." />
+      ) : (
+        <section className="card-grid card-grid--three">
+          {policies.map((policy) => (
+            <article key={policy.id} className="card">
+              <div className="card__header">
+                <div>
+                  <h3>{policy.name}</h3>
+                  <p>{policy.description}</p>
+                </div>
+                <span className={`severity severity-${policy.severity}`}>{policy.severity}</span>
               </div>
-              <span className={`severity severity-${policy.severity}`}>{policy.severity}</span>
-            </div>
-            <pre className="rule-block">{JSON.stringify(policy.rule, null, 2)}</pre>
-          </article>
-        ))}
-      </section>
+              <pre className="rule-block">{JSON.stringify(policy.rule, null, 2)}</pre>
+            </article>
+          ))}
+        </section>
+      )}
 
-      <section className="panel">
-        <div className="section-header">
-          <h3>Latest evaluations</h3>
-          <p>Most recent fleet compliance outcomes.</p>
+      <section className="card">
+        <div className="card__header">
+          <div>
+            <h3>Latest evaluations</h3>
+            <p>Recent compliance outcomes across every managed environment.</p>
+          </div>
+          <Link className="secondary-button secondary-button--small" to="/environments">
+            Manage environments
+          </Link>
         </div>
-        <div className="table-shell">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Policy</th>
-                <th>Status</th>
-                <th>Message</th>
-                <th>Evaluated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((result) => {
-                const policy = policies.find((entry) => entry.id === result.policy_id);
-                return (
-                  <tr key={result.id}>
-                    <td>{policy?.name ?? result.policy_id}</td>
-                    <td>
-                      <StatusPill status={result.compliance} />
-                    </td>
-                    <td>{result.message}</td>
-                    <td>{new Date(result.evaluated_at).toLocaleString()}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        {results.length === 0 ? (
+          <EmptyState title="No policy results yet" description="Queue environment syncs to evaluate policies against collected service posture and inventory." />
+        ) : (
+          <div className="table-shell">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Policy</th>
+                  <th>Status</th>
+                  <th>Message</th>
+                  <th>Evaluated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((result) => {
+                  const policy = policies.find((entry) => entry.id === result.policy_id);
+                  return (
+                    <tr key={result.id}>
+                      <td>{policy?.name ?? result.policy_id}</td>
+                      <td>
+                        <StatusPill status={result.compliance} />
+                      </td>
+                      <td>{result.message}</td>
+                      <td>{new Date(result.evaluated_at).toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   );
 }
-

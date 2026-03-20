@@ -41,6 +41,8 @@ class EnvironmentCreate(EnvironmentBase):
 
 
 class EnvironmentUpdate(BaseModel):
+    name: str | None = None
+    slug: str | None = None
     description: str | None = None
     owner: str | None = None
     tags: list[str] | None = None
@@ -51,6 +53,7 @@ class EnvironmentUpdate(BaseModel):
     controller_url: str | None = None
     eda_url: str | None = None
     hub_url: str | None = None
+    auth_mode: Literal["oauth2", "service_account", "header_passthrough"] | None = None
     client_id: str | None = None
     client_secret: str | None = None
     access_token: str | None = None
@@ -102,6 +105,18 @@ class ResourceResponse(BaseModel):
 
 
 class EnvironmentDetail(EnvironmentSummary):
+    labels: dict[str, Any]
+    platform_url: str | None
+    gateway_url: str
+    controller_url: str | None
+    eda_url: str | None
+    hub_url: str | None
+    auth_mode: str
+    client_id: str | None
+    verify_ssl: bool
+    sync_interval_minutes: int
+    capabilities: dict[str, Any] = Field(default_factory=dict)
+    service_paths: dict[str, Any] = Field(default_factory=dict)
     snapshots: list[ServiceSnapshotResponse] = Field(default_factory=list)
     resources: list[ResourceResponse] = Field(default_factory=list)
 
@@ -147,6 +162,17 @@ class DashboardResponse(BaseModel):
     compliance: dict[str, int]
     services: dict[str, dict[str, int]]
     environment_summaries: list[EnvironmentSummary]
+
+
+class SyncExecutionResponse(BaseModel):
+    id: str
+    environment_id: str
+    status: str
+    requested_by: str
+    started_at: datetime | None
+    finished_at: datetime | None
+    error_text: str | None
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class TopologyNode(BaseModel):
@@ -195,3 +221,13 @@ class RemoteActionResponse(BaseModel):
     target: str
     response_body: dict[str, Any] = Field(default_factory=dict)
 
+
+class RuntimeSettingsResponse(BaseModel):
+    environment: str
+    api_prefix: str
+    cors_origins: list[str]
+    gateway_trusted_proxy: bool
+    default_sync_interval_minutes: int
+    search_result_limit: int
+    request_timeout_seconds: int
+    trusted_headers: dict[str, str]

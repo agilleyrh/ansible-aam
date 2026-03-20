@@ -1,6 +1,25 @@
+import type {
+  DashboardResponse,
+  EnvironmentDetail,
+  EnvironmentMutationPayload,
+  EnvironmentSummary,
+  Policy,
+  PolicyResult,
+  RuntimeSettings,
+  SearchResult,
+  SyncExecution,
+  SyncRequestResponse,
+  TopologyResponse,
+} from "./types";
+
 const API_PREFIX = import.meta.env.VITE_API_PREFIX ?? "/api/v1";
 
-async function request<T>(path: string): Promise<T> {
+type RequestOptions = {
+  method?: string;
+  body?: unknown;
+};
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: HeadersInit = {
     Accept: "application/json",
   };
@@ -10,24 +29,50 @@ async function request<T>(path: string): Promise<T> {
     headers["X-RH-Roles"] = "aam.admin";
   }
 
+  if (options.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+
   const response = await fetch(`${API_PREFIX}${path}`, {
+    method: options.method ?? "GET",
     headers,
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+    let detail = `${response.status} ${response.statusText}`;
+    try {
+      const payload = (await response.json()) as { detail?: string };
+      if (payload.detail) {
+        detail = payload.detail;
+      }
+    } catch {
+      // Preserve the status text when the response body is empty or not JSON.
+    }
+    throw new Error(detail);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return response.json() as Promise<T>;
 }
 
 export const api = {
-  dashboard: () => request("/dashboard"),
-  environments: () => request("/environments"),
-  environment: (id: string) => request(`/environments/${id}`),
-  topology: (id: string) => request(`/environments/${id}/topology`),
-  policies: () => request("/policies"),
-  policyResults: () => request("/policy-results"),
-  search: (q: string) => request(`/search?q=${encodeURIComponent(q)}`),
-  syncExecutions: () => request("/sync-executions"),
+  dashboard: () => request<DashboardResponse>("/dashboard"),
+  environments: () => request<EnvironmentSummary[]>("/environments"),
+  environment: (id: string) => request<EnvironmentDetail>(`/environments/${id}`),
+  createEnvironment: (payload: EnvironmentMutationPayload) =>
+    request<EnvironmentSummary>("/environments", { method: "POST", body: payload }),
+  updateEnvironment: (id: string, payload: Partial<EnvironmentMutationPayload>) =>
+    request<EnvironmentSummary>(`/environments/${id}`, { method: "PATCH", body: payload }),
+  deleteEnvironment: (id: string) => request<void>(`/environments/${id}`, { method: "DELETE" }),
+  syncEnvironment: (id: string) => request<SyncRequestResponse>(`/environments/${id}/sync`, { method: "POST" }),
+  topology: (id: string) => request<TopologyResponse>(`/environments/${id}/topology`),
+  policies: () => request<Policy[]>("/policies"),
+  policyResults: () => request<PolicyResult[]>("/policy-results"),
+  search: (q: string) => request<SearchResult[]>(`/search?q=${encodeURIComponent(q)}`),
+  syncExecutions: () => request<SyncExecution[]>("/sync-executions"),
+  runtimeSettings: () => request<RuntimeSettings>("/settings/runtime"),
 };

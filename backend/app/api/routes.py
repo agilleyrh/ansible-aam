@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.dependencies import get_db
@@ -19,12 +19,15 @@ from app.schemas import (
     PolicyResultResponse,
     RemoteActionRequest,
     RemoteActionResponse,
+    RuntimeSettingsResponse,
     SearchResult,
+    SyncExecutionResponse,
     TopologyEdge,
     TopologyNode,
     TopologyResponse,
     UserContext,
 )
+from app.config import get_settings
 from app.security import encrypt_secret, require_roles
 from app.services.collector import enqueue_sync, record_action
 from app.services.connectors import AAPConnector
@@ -130,6 +133,23 @@ def update_environment(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Environment not found")
 
     update_data = payload.model_dump(exclude_unset=True)
+    new_name = update_data.get("name")
+    new_slug = update_data.get("slug")
+    if new_name or new_slug:
+        duplicate_filters = []
+        if new_name:
+            duplicate_filters.append(ManagedEnvironment.name == new_name)
+        if new_slug:
+            duplicate_filters.append(ManagedEnvironment.slug == new_slug)
+        duplicate = db.scalars(
+            select(ManagedEnvironment).where(
+                ManagedEnvironment.id != environment_id,
+                or_(*duplicate_filters),
+            )
+        ).one_or_none()
+        if duplicate is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Environment name or slug already exists")
+
     for field, value in update_data.items():
         if field == "client_secret":
             environment.encrypted_client_secret = encrypt_secret(value)
@@ -141,6 +161,19 @@ def update_environment(
     db.commit()
     db.refresh(environment)
     return EnvironmentSummary.model_validate(environment)
+
+
+@router.delete("/environments/{environment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_environment(
+    environment_id: str,
+    db: Session = Depends(get_db),
+    _: UserContext = Depends(require_roles("aam.admin")),
+) -> None:
+    environment = db.get(ManagedEnvironment, environment_id)
+    if environment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Environment not found")
+    db.delete(environment)
+    db.commit()
 
 
 @router.post("/environments/{environment_id}/sync", status_code=status.HTTP_202_ACCEPTED)
@@ -262,25 +295,48 @@ def search_resources(
     return run_search(db, q)
 
 
-@router.get("/sync-executions")
+@router.get("/sync-executions", response_model=list[SyncExecutionResponse])
 def list_sync_executions(
     db: Session = Depends(get_db),
     _: UserContext = Depends(require_roles("aam.viewer")),
-) -> list[dict]:
+) -> list[SyncExecutionResponse]:
     rows = db.scalars(select(SyncExecution).order_by(SyncExecution.created_at.desc()).limit(50)).all()
     return [
-        {
-            "id": row.id,
-            "environment_id": row.environment_id,
-            "status": row.status,
-            "requested_by": row.requested_by,
-            "started_at": row.started_at,
-            "finished_at": row.finished_at,
-            "error_text": row.error_text,
-            "details": row.details,
-        }
+        SyncExecutionResponse(
+            id=row.id,
+            environment_id=row.environment_id,
+            status=row.status,
+            requested_by=row.requested_by,
+            started_at=row.started_at,
+            finished_at=row.finished_at,
+            error_text=row.error_text,
+            details=row.details,
+        )
         for row in rows
     ]
+
+
+@router.get("/settings/runtime", response_model=RuntimeSettingsResponse)
+def runtime_settings(
+    _: UserContext = Depends(require_roles("aam.admin")),
+) -> RuntimeSettingsResponse:
+    settings = get_settings()
+    return RuntimeSettingsResponse(
+        environment=settings.environment,
+        api_prefix=settings.api_prefix,
+        cors_origins=settings.cors_origins,
+        gateway_trusted_proxy=settings.gateway_trusted_proxy,
+        default_sync_interval_minutes=settings.default_sync_interval_minutes,
+        search_result_limit=settings.search_result_limit,
+        request_timeout_seconds=settings.request_timeout_seconds,
+        trusted_headers={
+            "username": settings.header_username,
+            "email": settings.header_email,
+            "roles": settings.header_roles,
+            "groups": settings.header_groups,
+            "identity": settings.header_identity,
+        },
+    )
 
 
 @router.post("/actions", response_model=RemoteActionResponse)
