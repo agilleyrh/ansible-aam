@@ -61,18 +61,31 @@ export function EnvironmentDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function loadEnvironment() {
+  async function loadEnvironment(signal?: AbortSignal) {
     if (!environmentId) {
       return;
     }
 
-    const [detail, stream] = await Promise.all([api.environment(environmentId), api.activity(environmentId)]);
-    setEnvironment(detail);
-    setActivity(stream);
+    const [detailResult, activityResult] = await Promise.allSettled([
+      api.environment(environmentId, signal),
+      api.activity(environmentId, signal),
+    ]);
+    if (signal?.aborted) return;
+    if (detailResult.status === "fulfilled") {
+      setEnvironment(detailResult.value);
+      setError(null);
+    } else {
+      setError(detailResult.reason?.message ?? "Failed to load environment");
+    }
+    if (activityResult.status === "fulfilled") setActivity(activityResult.value);
   }
 
   useEffect(() => {
-    loadEnvironment().catch((err: Error) => setError(err.message));
+    const controller = new AbortController();
+    loadEnvironment(controller.signal).catch((err: Error) => {
+      if (!controller.signal.aborted) setError(err.message);
+    });
+    return () => controller.abort();
   }, [environmentId]);
 
   async function handleSave(payload: EnvironmentMutationPayload, options: { syncAfterSave: boolean }) {

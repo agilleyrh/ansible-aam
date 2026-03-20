@@ -10,17 +10,21 @@ export function SearchPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searched, setSearched] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
     setSearched(true);
+    setSearching(true);
     try {
       const value = await api.search(query);
       setResults(value);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed.");
+    } finally {
+      setSearching(false);
     }
   }
 
@@ -37,8 +41,8 @@ export function SearchPage() {
       <section className="card">
         <form className="toolbar toolbar--form" onSubmit={onSubmit}>
           <input value={query} onChange={(event) => setQuery(event.target.value)} className="text-input text-input--search" placeholder="Search resources by name, type, service, or environment" />
-          <button type="submit" className="primary-button" disabled={query.trim().length < 2}>
-            Search inventory
+          <button type="submit" className="primary-button" disabled={query.trim().length < 2 || searching}>
+            {searching ? "Searching..." : "Search inventory"}
           </button>
         </form>
         {error ? <div className="inline-alert inline-alert--danger">{error}</div> : null}

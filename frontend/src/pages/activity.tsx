@@ -11,23 +11,35 @@ export function ActivityPage() {
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([]);
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState("all");
   const [items, setItems] = useState<ActivityEvent[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api
-      .environments()
-      .then(setEnvironments)
-      .catch((err: Error) => setError(err.message));
+    api.environments().then(setEnvironments).catch(() => {});
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
     api
-      .activity(selectedEnvironmentId === "all" ? undefined : selectedEnvironmentId)
-      .then(setItems)
-      .catch((err: Error) => setError(err.message));
+      .activity(selectedEnvironmentId === "all" ? undefined : selectedEnvironmentId, controller.signal)
+      .then((value) => {
+        if (!controller.signal.aborted) {
+          setItems(value);
+          setError(null);
+        }
+      })
+      .catch((err: Error) => { if (!controller.signal.aborted) setError(err.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, [selectedEnvironmentId]);
 
-  if (error) {
+  if (loading && items.length === 0) {
+    return <section className="card">Loading activity stream...</section>;
+  }
+
+  if (error && items.length === 0) {
     return <section className="card">Activity stream unavailable: {error}</section>;
   }
 
@@ -73,7 +85,9 @@ export function ActivityPage() {
             <p>Ordered newest first and aligned to the activity-stream pattern used across controller and AAP.</p>
           </div>
         </div>
-        {items.length === 0 ? (
+        {loading && items.length > 0 ? (
+          <div className="inline-alert">Refreshing activity stream...</div>
+        ) : items.length === 0 ? (
           <EmptyState title="No activity yet" description="Register an environment, queue a sync, or run a remote action to start populating the stream." />
         ) : (
           <ActivityTable items={items} showEnvironment={selectedEnvironmentId === "all"} />

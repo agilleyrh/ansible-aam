@@ -8,18 +8,23 @@ from app.models import ManagedEnvironment, ManagedResource
 from app.schemas import SearchResult
 
 
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def run_search(db: Session, query: str) -> list[SearchResult]:
     settings = get_settings()
+    escaped = _escape_like(query)
     results = db.execute(
         select(ManagedResource, ManagedEnvironment)
         .join(ManagedEnvironment, ManagedEnvironment.id == ManagedResource.environment_id)
         .where(
             or_(
-                ManagedResource.name.ilike(f"%{query}%"),
-                ManagedResource.resource_type.ilike(f"%{query}%"),
-                ManagedResource.service.ilike(f"%{query}%"),
-                ManagedResource.external_id.ilike(f"%{query}%"),
-                ManagedEnvironment.name.ilike(f"%{query}%"),
+                ManagedResource.name.ilike(f"%{escaped}%"),
+                ManagedResource.resource_type.ilike(f"%{escaped}%"),
+                ManagedResource.service.ilike(f"%{escaped}%"),
+                ManagedResource.external_id.ilike(f"%{escaped}%"),
+                ManagedEnvironment.name.ilike(f"%{escaped}%"),
             )
         )
         .order_by(ManagedEnvironment.name, ManagedResource.service, ManagedResource.name)

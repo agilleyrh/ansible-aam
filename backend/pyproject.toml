@@ -9,6 +9,7 @@ description = "Central fleet management hub for Red Hat Ansible Automation Platf
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "alembic>=1.14.0",
   "cryptography>=44.0.0",
   "fastapi>=0.115.8",
   "httpx>=0.28.1",

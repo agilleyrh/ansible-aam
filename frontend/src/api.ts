@@ -20,6 +20,7 @@ const API_PREFIX = import.meta.env.VITE_API_PREFIX ?? "/api/v1";
 type RequestOptions = {
   method?: string;
   body?: unknown;
+  signal?: AbortSignal;
 };
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -40,14 +41,17 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     method: options.method ?? "GET",
     headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    signal: options.signal,
   });
 
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
     try {
-      const payload = (await response.json()) as { detail?: string };
-      if (payload.detail) {
+      const payload = (await response.json()) as { detail?: string | unknown[] };
+      if (typeof payload.detail === "string") {
         detail = payload.detail;
+      } else if (Array.isArray(payload.detail)) {
+        detail = payload.detail.map((item) => (typeof item === "object" && item !== null && "msg" in item ? (item as { msg: string }).msg : String(item))).join("; ");
       }
     } catch {
       // Preserve the status text when the response body is empty or not JSON.
@@ -63,23 +67,23 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const api = {
-  dashboard: () => request<DashboardResponse>("/dashboard"),
-  environments: () => request<EnvironmentSummary[]>("/environments"),
-  environment: (id: string) => request<EnvironmentDetail>(`/environments/${id}`),
+  dashboard: (signal?: AbortSignal) => request<DashboardResponse>("/dashboard", { signal }),
+  environments: (signal?: AbortSignal) => request<EnvironmentSummary[]>("/environments", { signal }),
+  environment: (id: string, signal?: AbortSignal) => request<EnvironmentDetail>(`/environments/${id}`, { signal }),
   createEnvironment: (payload: EnvironmentMutationPayload) =>
     request<EnvironmentSummary>("/environments", { method: "POST", body: payload }),
   updateEnvironment: (id: string, payload: Partial<EnvironmentMutationPayload>) =>
     request<EnvironmentSummary>(`/environments/${id}`, { method: "PATCH", body: payload }),
   deleteEnvironment: (id: string) => request<void>(`/environments/${id}`, { method: "DELETE" }),
   syncEnvironment: (id: string) => request<SyncRequestResponse>(`/environments/${id}/sync`, { method: "POST" }),
-  topology: (id: string) => request<TopologyResponse>(`/environments/${id}/topology`),
-  policies: () => request<Policy[]>("/policies"),
-  policyResults: () => request<PolicyResult[]>("/policy-results"),
-  search: (q: string) => request<SearchResult[]>(`/search?q=${encodeURIComponent(q)}`),
-  syncExecutions: () => request<SyncExecution[]>("/sync-executions"),
-  activity: (environmentId?: string) =>
-    request<ActivityEvent[]>(`/activity${environmentId ? `?environment_id=${encodeURIComponent(environmentId)}` : ""}`),
-  runtimeSettings: () => request<RuntimeSettings>("/settings/runtime"),
+  topology: (id: string, signal?: AbortSignal) => request<TopologyResponse>(`/environments/${id}/topology`, { signal }),
+  policies: (signal?: AbortSignal) => request<Policy[]>("/policies", { signal }),
+  policyResults: (signal?: AbortSignal) => request<PolicyResult[]>("/policy-results", { signal }),
+  search: (q: string, signal?: AbortSignal) => request<SearchResult[]>(`/search?q=${encodeURIComponent(q)}`, { signal }),
+  syncExecutions: (signal?: AbortSignal) => request<SyncExecution[]>("/sync-executions", { signal }),
+  activity: (environmentId?: string, signal?: AbortSignal) =>
+    request<ActivityEvent[]>(`/activity${environmentId ? `?environment_id=${encodeURIComponent(environmentId)}` : ""}`, { signal }),
+  runtimeSettings: (signal?: AbortSignal) => request<RuntimeSettings>("/settings/runtime", { signal }),
   executeAction: (payload: RemoteActionRequest) =>
     request<RemoteActionResponse>("/actions", { method: "POST", body: payload }),
 };

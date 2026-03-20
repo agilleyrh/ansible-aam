@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_, select
+from redis import Redis
+from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.dependencies import get_db
@@ -33,15 +34,30 @@ from app.security import encrypt_secret, require_roles
 from app.services.collector import enqueue_sync, record_action
 from app.services.connectors import AAPConnector
 from app.services.dashboard import build_dashboard
-from app.services.policies import seed_default_policies
 from app.services.search import run_search
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 @router.get("/healthz")
-def healthcheck() -> dict[str, str]:
-    return {"status": "ok"}
+def healthcheck(db: Session = Depends(get_db)) -> dict[str, str]:
+    settings = get_settings()
+    checks: dict[str, str] = {}
+    try:
+        db.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception:
+        checks["database"] = "error"
+    try:
+        redis = Redis.from_url(settings.redis_url, socket_connect_timeout=2)
+        redis.ping()
+        checks["redis"] = "ok"
+        redis.close()
+    except Exception:
+        checks["redis"] = "error"
+    overall = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
+    return {"status": overall, **checks}
 
 
 @router.get("/dashboard", response_model=DashboardResponse)
@@ -186,7 +202,10 @@ def sync_environment(
     environment = db.get(ManagedEnvironment, environment_id)
     if environment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Environment not found")
-    job_id = enqueue_sync(environment_id, user.username)
+    try:
+        job_id = enqueue_sync(environment_id, user.username)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return {"job_id": job_id, "status": "queued"}
 
 
@@ -311,7 +330,6 @@ def list_policies(
     db: Session = Depends(get_db),
     _: UserContext = Depends(require_roles("aam.viewer")),
 ) -> list[PolicyResponse]:
-    seed_default_policies(db)
     policies = db.scalars(select(PolicyDefinition).order_by(PolicyDefinition.name)).all()
     return [PolicyResponse.model_validate(policy) for policy in policies]
 
@@ -503,7 +521,7 @@ def runtime_settings(
 
 
 @router.post("/actions", response_model=RemoteActionResponse)
-def execute_action(
+async def execute_action(
     payload: RemoteActionRequest,
     db: Session = Depends(get_db),
     user: UserContext = Depends(require_roles("aam.operator")),
@@ -514,8 +532,8 @@ def execute_action(
 
     connector = AAPConnector(environment)
     try:
-        service, response_body = asyncio.run(
-            connector.execute_action(payload.action, payload.target_id, payload.payload, payload.path_override)
+        service, response_body = await connector.execute_action(
+            payload.action, payload.target_id, payload.payload, payload.path_override,
         )
         audit = record_action(
             db,
@@ -529,6 +547,7 @@ def execute_action(
             response_body=response_body,
         )
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Action %s on environment %s failed", payload.action, payload.environment_id)
         audit = record_action(
             db,
             environment_id=environment.id,
@@ -540,7 +559,8 @@ def execute_action(
             request_body=payload.payload,
             response_body={"error": str(exc)},
         )
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        safe_detail = f"Action {payload.action} failed against the upstream service"
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=safe_detail) from exc
 
     return RemoteActionResponse(
         action_id=audit.id,

@@ -9,6 +9,7 @@ import type { EnvironmentMutationPayload, EnvironmentSummary } from "../types";
 
 export function EnvironmentsPage() {
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([]);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -20,7 +21,9 @@ export function EnvironmentsPage() {
   }
 
   useEffect(() => {
-    loadEnvironments().catch((err: Error) => setError(err.message));
+    loadEnvironments()
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
   }, []);
 
   async function handleCreate(payload: EnvironmentMutationPayload, options: { syncAfterSave: boolean }) {
@@ -81,7 +84,9 @@ export function EnvironmentsPage() {
             </div>
           </div>
 
-          {environments.length === 0 ? (
+          {loading ? (
+            <p style={{ padding: "1rem", color: "var(--pf-text-muted)" }}>Loading environments...</p>
+          ) : environments.length === 0 ? (
             <EmptyState title="No environments registered" description="Use the registration form to add your first Ansible Automation Platform deployment." />
           ) : (
             <div className="table-shell">

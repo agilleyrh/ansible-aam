@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Iterable
 from typing import Any
 from urllib.parse import urljoin
@@ -11,10 +12,12 @@ from app.config import get_settings
 from app.models import ManagedEnvironment
 from app.security import decrypt_secret
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_SERVICE_PATHS: dict[str, dict[str, str]] = {
     "gateway": {
         "health": "/api/gateway/v1/ping/",
+        "token": "/api/gateway/v1/tokens/",
     },
     "controller": {
         "ping": "/api/controller/v2/ping/",
@@ -27,6 +30,7 @@ DEFAULT_SERVICE_PATHS: dict[str, dict[str, str]] = {
         "projects": "/api/controller/v2/projects/",
         "credentials": "/api/controller/v2/credentials/",
         "execution_environments": "/api/controller/v2/execution_environments/",
+        "token": "/api/o/token/",
     },
     "eda": {
         "rulebook_activations": "/api/eda/v1/rulebook_activations/",
@@ -39,6 +43,12 @@ DEFAULT_SERVICE_PATHS: dict[str, dict[str, str]] = {
     },
 }
 
+OAUTH2_TOKEN_CANDIDATE_PATHS = [
+    "/api/gateway/v1/tokens/",
+    "/api/o/token/",
+    "/o/token/",
+]
+
 
 def merge_service_paths(overrides: dict[str, Any] | None) -> dict[str, dict[str, str]]:
     merged = {service: paths.copy() for service, paths in DEFAULT_SERVICE_PATHS.items()}
@@ -50,18 +60,90 @@ def merge_service_paths(overrides: dict[str, Any] | None) -> dict[str, dict[str,
 
 
 class AAPConnector:
-    def __init__(self, environment: ManagedEnvironment):
+    def __init__(self, environment: ManagedEnvironment, *, forwarded_headers: dict[str, str] | None = None):
         self.environment = environment
         self.settings = get_settings()
         self.service_paths = merge_service_paths(environment.service_paths)
+        self._forwarded_headers = forwarded_headers or {}
+        self._oauth2_token: str | None = None
         self.headers = self._build_headers()
 
     def _build_headers(self) -> dict[str, str]:
-        headers = {"Accept": "application/json"}
+        headers: dict[str, str] = {"Accept": "application/json"}
+        auth_mode = self.environment.auth_mode
+
+        if auth_mode == "header_passthrough":
+            for key in ("authorization", "x-rh-identity", "x-rh-user"):
+                value = self._forwarded_headers.get(key)
+                if value:
+                    headers[key] = value
+            return headers
+
         token = decrypt_secret(self.environment.encrypted_token)
         if token:
             headers["Authorization"] = f"Bearer {token}"
         return headers
+
+    async def _acquire_oauth2_token(self) -> str:
+        """Perform OAuth2 client_credentials grant against the AAP token endpoint."""
+        if self._oauth2_token:
+            return self._oauth2_token
+
+        client_id = self.environment.client_id
+        client_secret = decrypt_secret(self.environment.encrypted_client_secret)
+        if not client_id or not client_secret:
+            raise RuntimeError("OAuth2 auth_mode requires client_id and client_secret to be configured")
+
+        base_url = self.environment.gateway_url or self.environment.controller_url
+        if not base_url:
+            raise RuntimeError("No base URL available for OAuth2 token acquisition")
+
+        token_path_override = self.service_paths.get("gateway", {}).get("token") or self.service_paths.get("controller", {}).get("token")
+        candidate_paths = [token_path_override] if token_path_override else OAUTH2_TOKEN_CANDIDATE_PATHS
+
+        last_error: Exception | None = None
+        async with httpx.AsyncClient(
+            timeout=self.settings.request_timeout_seconds,
+            verify=self.environment.verify_ssl,
+        ) as client:
+            for path in candidate_paths:
+                if not path:
+                    continue
+                url = urljoin(base_url.rstrip("/") + "/", path.lstrip("/"))
+                try:
+                    response = await client.post(
+                        url,
+                        data={
+                            "grant_type": "client_credentials",
+                            "client_id": client_id,
+                            "client_secret": client_secret,
+                        },
+                        headers={"Accept": "application/json"},
+                    )
+                    if response.status_code == 404:
+                        last_error = RuntimeError(f"Token endpoint not found at {path}")
+                        continue
+                    response.raise_for_status()
+                    token_data = response.json()
+                    access_token = token_data.get("access_token")
+                    if not access_token:
+                        raise RuntimeError(f"Token response missing access_token from {path}")
+                    self._oauth2_token = access_token
+                    return access_token
+                except httpx.HTTPStatusError as exc:
+                    last_error = exc
+                    if exc.response.status_code == 404:
+                        continue
+                    raise
+
+        raise last_error or RuntimeError("Failed to acquire OAuth2 token from any candidate path")
+
+    async def _ensure_auth_headers(self) -> dict[str, str]:
+        """Return headers with fresh auth for the current auth_mode."""
+        if self.environment.auth_mode == "oauth2" and not self.headers.get("Authorization"):
+            token = await self._acquire_oauth2_token()
+            self.headers["Authorization"] = f"Bearer {token}"
+        return self.headers
 
     async def _request_json(
         self,
@@ -75,10 +157,12 @@ class AAPConnector:
         if not base_url or not path:
             raise RuntimeError("Base URL or path is not configured")
 
+        headers = await self._ensure_auth_headers()
+
         async with httpx.AsyncClient(
             timeout=self.settings.request_timeout_seconds,
             verify=self.environment.verify_ssl,
-            headers=self.headers,
+            headers=headers,
         ) as client:
             response = await client.request(
                 method,

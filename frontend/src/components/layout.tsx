@@ -40,7 +40,7 @@ export function AppLayout() {
         <aside className="sidebar">
           <div className="sidebar__section">
             <p className="sidebar__title">Automation fleet</p>
-            <nav className="sidebar__nav">
+            <nav className="sidebar__nav" aria-label="Main navigation">
               {links.map((link) => (
                 <NavLink key={link.to} to={link.to} end={link.to === "/"} className="sidebar__link">
                   {link.label}

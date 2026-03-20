@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 
 from redis import Redis
@@ -14,7 +15,10 @@ from app.models import ActionAudit, ManagedEnvironment, ManagedResource, Service
 from app.services.connectors import AAPConnector
 from app.services.policies import evaluate_policies
 
+logger = logging.getLogger(__name__)
 SYNC_QUEUE_NAME = "aam-sync"
+SYNC_LOCK_PREFIX = "aam:sync-lock:"
+SYNC_LOCK_TTL_SECONDS = 900
 
 
 def redis_connection() -> Redis:
@@ -26,7 +30,14 @@ def sync_queue() -> Queue:
 
 
 def enqueue_sync(environment_id: str, requested_by: str = "system") -> str:
-    job = sync_queue().enqueue(run_environment_sync, environment_id, requested_by, job_timeout="15m")
+    settings = get_settings()
+    redis = redis_connection()
+    lock_key = f"{SYNC_LOCK_PREFIX}{environment_id}"
+    if not redis.set(lock_key, "1", nx=True, ex=SYNC_LOCK_TTL_SECONDS):
+        logger.info("Sync already in progress for environment %s, skipping", environment_id)
+        raise RuntimeError(f"A sync is already in progress for environment {environment_id}")
+    timeout = f"{settings.sync_job_timeout_minutes}m"
+    job = sync_queue().enqueue(run_environment_sync, environment_id, requested_by, job_timeout=timeout)
     return job.id
 
 
@@ -112,6 +123,10 @@ def run_environment_sync(environment_id: str, requested_by: str = "system") -> N
         db.commit()
         raise
     finally:
+        try:
+            redis_connection().delete(f"{SYNC_LOCK_PREFIX}{environment_id}")
+        except Exception:
+            logger.warning("Failed to release sync lock for %s", environment_id)
         db.close()
 
 
@@ -122,12 +137,17 @@ def enqueue_due_syncs() -> list[str]:
         environments = db.scalars(select(ManagedEnvironment)).all()
         now = datetime.now(timezone.utc)
         for environment in environments:
+            should_sync = False
             if environment.last_synced_at is None:
-                job_ids.append(enqueue_sync(environment.id, "scheduler"))
-                continue
-            age_minutes = (now - environment.last_synced_at).total_seconds() / 60
-            if age_minutes >= environment.sync_interval_minutes:
-                job_ids.append(enqueue_sync(environment.id, "scheduler"))
+                should_sync = True
+            else:
+                age_minutes = (now - environment.last_synced_at).total_seconds() / 60
+                should_sync = age_minutes >= environment.sync_interval_minutes
+            if should_sync:
+                try:
+                    job_ids.append(enqueue_sync(environment.id, "scheduler"))
+                except RuntimeError:
+                    pass
         return job_ids
     finally:
         db.close()

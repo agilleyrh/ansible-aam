@@ -11,18 +11,30 @@ import type { ActivityEvent, DashboardResponse } from "../types";
 export function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.dashboard(), api.activity()])
-      .then(([dashboard, stream]) => {
-        setData(dashboard);
-        setActivity(stream);
+    const controller = new AbortController();
+    setLoading(true);
+
+    Promise.allSettled([api.dashboard(controller.signal), api.activity(undefined, controller.signal)])
+      .then(([dashboardResult, activityResult]) => {
+        if (controller.signal.aborted) return;
+        if (dashboardResult.status === "fulfilled") setData(dashboardResult.value);
+        else setError(dashboardResult.reason?.message ?? "Failed to load dashboard");
+        if (activityResult.status === "fulfilled") setActivity(activityResult.value);
       })
-      .catch((err: Error) => setError(err.message));
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+
+    return () => controller.abort();
   }, []);
 
-  if (error) {
+  if (loading && !data) {
+    return <section className="card">Loading dashboard...</section>;
+  }
+
+  if (error && !data) {
     return <section className="card">Dashboard unavailable: {error}</section>;
   }
 

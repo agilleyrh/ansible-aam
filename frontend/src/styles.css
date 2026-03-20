@@ -127,6 +127,11 @@ button {
   color: white;
 }
 
+.masthead__quicklink:focus-visible {
+  outline: 2px solid #73bcf7;
+  outline-offset: 2px;
+}
+
 .masthead__quicklink.active {
   background: #232326;
   border-color: #73bcf7;
@@ -186,6 +191,11 @@ button {
 
 .sidebar__link:hover {
   background: var(--pf-info-soft);
+}
+
+.sidebar__link:focus-visible {
+  outline: 2px solid var(--pf-brand);
+  outline-offset: -2px;
 }
 
 .sidebar__link.active {
@@ -451,6 +461,13 @@ button {
   border: 1px solid transparent;
   font-weight: 600;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.primary-button:focus-visible,
+.secondary-button:focus-visible,
+.danger-button:focus-visible {
+  outline: 2px solid var(--pf-brand);
+  outline-offset: 2px;
 }
 
 .primary-button {
@@ -778,6 +795,49 @@ button {
   font-size: 0.875rem;
 }
 
+.topology-tree {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.topology-tree-item {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.topology-tree-children {
+  display: grid;
+  gap: 0.75rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--pf-border);
+}
+
+.topology-edges-details {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--pf-border);
+}
+
+.topology-edges-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--pf-text-muted);
+  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
+}
+
+.topology-edge-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  padding: 0 0.5rem;
+  border-radius: 0.25rem;
+  background: var(--pf-info-soft);
+  color: var(--pf-brand);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
 .topology-board {
   display: grid;
   gap: 0.75rem;
@@ -911,7 +971,7 @@ button {
     align-items: stretch;
   }
 
-  .masthead__meta,
+  .masthead__quicklinks,
   .page-header__actions {
     justify-content: flex-start;
   }

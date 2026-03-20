@@ -9,18 +9,23 @@ import type { Policy, PolicyResult } from "../types";
 export function PoliciesPage() {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [results, setResults] = useState<PolicyResult[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.policies(), api.policyResults()])
-      .then(([policyList, resultList]) => {
-        setPolicies(policyList);
-        setResults(resultList);
+    const controller = new AbortController();
+    Promise.allSettled([api.policies(controller.signal), api.policyResults(controller.signal)])
+      .then(([policiesResult, resultsResult]) => {
+        if (controller.signal.aborted) return;
+        if (policiesResult.status === "fulfilled") setPolicies(policiesResult.value);
+        else setError(policiesResult.reason?.message ?? "Failed to load policies");
+        if (resultsResult.status === "fulfilled") setResults(resultsResult.value);
       })
-      .catch((err: Error) => setError(err.message));
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, []);
 
-  if (error) {
+  if (error && policies.length === 0) {
     return <section className="card">Governance unavailable: {error}</section>;
   }
 
@@ -34,7 +39,9 @@ export function PoliciesPage() {
         </div>
       </section>
 
-      {policies.length === 0 ? (
+      {loading ? (
+        <section className="card"><p style={{ color: "var(--pf-text-muted)" }}>Loading policies...</p></section>
+      ) : policies.length === 0 ? (
         <EmptyState title="No governance policies available" description="Once the backend seeds or creates policies, they will appear here with fleet evaluation results." />
       ) : (
         <section className="card-grid card-grid--three">
@@ -63,7 +70,9 @@ export function PoliciesPage() {
             Open environment registry
           </Link>
         </div>
-        {results.length === 0 ? (
+        {loading ? (
+          <p style={{ color: "var(--pf-text-muted)" }}>Loading results...</p>
+        ) : results.length === 0 ? (
           <EmptyState title="No policy results yet" description="Queue environment syncs to evaluate policies against collected service posture and inventory." />
         ) : (
           <div className="table-shell">

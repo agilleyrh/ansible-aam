@@ -1,6 +1,7 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 
 import { AppLayout } from "./components/layout";
+import { EmptyState } from "./components/empty-state";
 import { ActivityPage } from "./pages/activity";
 import { DashboardPage } from "./pages/dashboard";
 import { EnvironmentDetailPage } from "./pages/environment-detail";
@@ -9,6 +10,16 @@ import { PoliciesPage } from "./pages/policies";
 import { SearchPage } from "./pages/search";
 import { SettingsPage } from "./pages/settings";
 import { TopologyPage } from "./pages/topology";
+
+function NotFoundPage() {
+  return (
+    <EmptyState
+      title="Page not found"
+      description="The page you are looking for does not exist or has been moved."
+      action={<Link className="primary-button" to="/">Return to dashboard</Link>}
+    />
+  );
+}
 
 export function App() {
   return (
@@ -23,6 +34,7 @@ export function App() {
           <Route path="/topology" element={<TopologyPage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
