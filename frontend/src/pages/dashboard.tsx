@@ -1,12 +1,46 @@
 import { useEffect, useState } from "react";
+
+import {
+  Alert,
+  Bullseye,
+  Card,
+  CardBody,
+  CardHeader,
+  Flex,
+  Gallery,
+  Grid,
+  GridItem,
+  Progress,
+  Stack,
+  StackItem,
+  Text,
+  Title,
+} from "@patternfly/react-core";
 import { Link } from "react-router-dom";
 
 import { api } from "../api";
 import { ActivityTable } from "../components/activity-table";
 import { EmptyState } from "../components/empty-state";
+import { LinkButton } from "../components/link-button";
+import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
 import { StatusPill } from "../components/status-pill";
 import type { ActivityEvent, DashboardResponse } from "../types";
+import { formatDateTime, humanize } from "../utils";
+
+function getProgressVariant(name: string): "danger" | "success" | "warning" | undefined {
+  const normalized = name.toLowerCase();
+  if (["compliant", "healthy", "success"].includes(normalized)) {
+    return "success";
+  }
+  if (["warning", "queued", "running"].includes(normalized)) {
+    return "warning";
+  }
+  if (["critical", "failed", "non_compliant", "error"].includes(normalized)) {
+    return "danger";
+  }
+  return undefined;
+}
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
@@ -20,26 +54,50 @@ export function DashboardPage() {
 
     Promise.allSettled([api.dashboard(controller.signal), api.activity(undefined, controller.signal)])
       .then(([dashboardResult, activityResult]) => {
-        if (controller.signal.aborted) return;
-        if (dashboardResult.status === "fulfilled") setData(dashboardResult.value);
-        else setError(dashboardResult.reason?.message ?? "Failed to load dashboard");
-        if (activityResult.status === "fulfilled") setActivity(activityResult.value);
+        if (controller.signal.aborted) {
+          return;
+        }
+        if (dashboardResult.status === "fulfilled") {
+          setData(dashboardResult.value);
+          setError(null);
+        } else {
+          setError(dashboardResult.reason?.message ?? "Failed to load dashboard");
+        }
+        if (activityResult.status === "fulfilled") {
+          setActivity(activityResult.value);
+        }
       })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      });
 
     return () => controller.abort();
   }, []);
 
   if (loading && !data) {
-    return <section className="card">Loading dashboard...</section>;
+    return (
+      <Bullseye>
+        <Card isFlat>
+          <CardBody>Loading dashboard...</CardBody>
+        </Card>
+      </Bullseye>
+    );
   }
 
   if (error && !data) {
-    return <section className="card">Dashboard unavailable: {error}</section>;
+    return <Alert isInline variant="danger" title={`Dashboard unavailable: ${error}`} />;
   }
 
   if (!data) {
-    return <section className="card">Loading dashboard...</section>;
+    return (
+      <Bullseye>
+        <Card isFlat>
+          <CardBody>Loading dashboard...</CardBody>
+        </Card>
+      </Bullseye>
+    );
   }
 
   const hasEnvironments = data.environment_count > 0;
@@ -51,205 +109,355 @@ export function DashboardPage() {
     .slice(0, 6);
 
   return (
-    <div className="page-stack">
-      <section className="page-header">
-        <div>
-          <p className="eyebrow">Overview</p>
-          <h2>Multi-environment automation operations</h2>
-          <p className="page-header__description">Track health, compliance, and component posture across every registered AAP environment from one console.</p>
-        </div>
-        <div className="page-header__actions">
-          <Link className="secondary-button" to="/settings">
-            View runtime settings
-          </Link>
-          <Link className="primary-button" to="/environments">
-            Open environment registry
-          </Link>
-        </div>
-      </section>
-
-      <section className="card-grid card-grid--four">
-        <StatCard label="Managed environments" value={data.environment_count} detail="Registered AAP estates" />
-        <StatCard label="Healthy" value={data.healthy_count} detail="No current collection or policy issues" />
-        <StatCard label="Warning" value={data.warning_count} detail="Needs review or follow-up" />
-        <StatCard label="Critical" value={data.critical_count} detail="Sync or service failures detected" />
-      </section>
-
-      {!hasEnvironments ? (
-        <EmptyState
-          title="No AAP environments registered"
-          description="Register your first controller, gateway, EDA, or automation hub endpoint to populate dashboard health, topology, and governance data."
-          action={
-            <Link className="primary-button" to="/environments">
-              Register first environment
-            </Link>
+    <Stack hasGutter>
+      <StackItem>
+        <PageHeader
+          section="Overview"
+          title="Multi-environment automation operations"
+          description="Track health, compliance, and component posture across every registered AAP environment from one console."
+          actions={
+            <>
+              <LinkButton to="/settings" variant="secondary">
+                View runtime settings
+              </LinkButton>
+              <LinkButton to="/environments" variant="primary">
+                Open environment registry
+              </LinkButton>
+            </>
           }
         />
+      </StackItem>
+
+      {error ? (
+        <StackItem>
+          <Alert isInline variant="warning" title={`Loaded with partial data: ${error}`} />
+        </StackItem>
+      ) : null}
+
+      <StackItem>
+        <Gallery hasGutter minWidths={{ default: "180px", lg: "220px" }}>
+          <StatCard label="Managed environments" value={data.environment_count} detail="Registered AAP estates" />
+          <StatCard label="Healthy" value={data.healthy_count} detail="No current collection or policy issues" />
+          <StatCard label="Warning" value={data.warning_count} detail="Needs review or follow-up" />
+          <StatCard label="Critical" value={data.critical_count} detail="Sync or service failures detected" />
+        </Gallery>
+      </StackItem>
+
+      {!hasEnvironments ? (
+        <StackItem>
+          <Card isFlat>
+            <CardBody>
+              <EmptyState
+                title="No AAP environments registered"
+                description="Register your first controller, gateway, EDA, or automation hub endpoint to populate dashboard health, topology, and governance data."
+                action={
+                  <LinkButton to="/environments" variant="primary">
+                    Register first environment
+                  </LinkButton>
+                }
+              />
+            </CardBody>
+          </Card>
+        </StackItem>
       ) : (
         <>
-          <section className="page-columns">
-            <article className="card">
-              <div className="card__header">
-                <div>
-                  <h3>Compliance rollup</h3>
-                  <p>Most recent policy outcomes across the fleet.</p>
-                </div>
-              </div>
-              <div className="meter-stack">
-                {Object.entries(data.compliance).map(([key, value]) => (
-                  <div key={key} className="meter-row">
-                    <span>{key}</span>
-                    <div className="meter">
-                      <div className={`meter__fill meter__fill--${key.toLowerCase()}`} style={{ width: `${Math.min(value * 18, 100)}%` }} />
-                    </div>
-                    <strong>{value}</strong>
-                  </div>
-                ))}
-              </div>
-            </article>
-
-            <article className="card">
-              <div className="card__header">
-                <div>
-                  <h3>Service health</h3>
-                  <p>Component readiness by service type.</p>
-                </div>
-              </div>
-              <div className="service-stack">
-                {Object.entries(data.services).map(([service, counts]) => (
-                  <article key={service} className="service-card">
-                    <div className="service-card__title">
-                      <h4>{service.toUpperCase()}</h4>
-                    </div>
-                    <div className="service-card__metrics">
-                      {Object.entries(counts).map(([status, value]) => (
-                        <div key={status}>
-                          <StatusPill status={status} />
-                          <strong>{value}</strong>
-                        </div>
+          <StackItem>
+            <Grid hasGutter>
+              <GridItem lg={6}>
+                <Card isFlat isFullHeight>
+                  <CardHeader>
+                    <Stack>
+                      <StackItem>
+                        <Title headingLevel="h2" size="lg">
+                          Compliance rollup
+                        </Title>
+                      </StackItem>
+                      <StackItem>
+                        <Text component="p" className="aam-muted">
+                          Most recent policy outcomes across the fleet.
+                        </Text>
+                      </StackItem>
+                    </Stack>
+                  </CardHeader>
+                  <CardBody>
+                    <Stack hasGutter>
+                      {Object.entries(data.compliance).map(([key, value]) => (
+                        <StackItem key={key}>
+                          <Progress
+                            title={humanize(key)}
+                            value={Math.min(value * 18, 100)}
+                            measureLocation="outside"
+                            label={String(value)}
+                            valueText={`${value} policy results`}
+                            variant={getProgressVariant(key)}
+                          />
+                        </StackItem>
                       ))}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </article>
-          </section>
+                    </Stack>
+                  </CardBody>
+                </Card>
+              </GridItem>
+              <GridItem lg={6}>
+                <Card isFlat isFullHeight>
+                  <CardHeader>
+                    <Stack>
+                      <StackItem>
+                        <Title headingLevel="h2" size="lg">
+                          Service health
+                        </Title>
+                      </StackItem>
+                      <StackItem>
+                        <Text component="p" className="aam-muted">
+                          Component readiness by service type.
+                        </Text>
+                      </StackItem>
+                    </Stack>
+                  </CardHeader>
+                  <CardBody>
+                    <Gallery hasGutter minWidths={{ default: "220px" }}>
+                      {Object.entries(data.services).map(([service, counts]) => (
+                        <Card key={service} isFlat isCompact>
+                          <CardHeader>
+                            <Title headingLevel="h3" size="md">
+                              {service.toUpperCase()}
+                            </Title>
+                          </CardHeader>
+                          <CardBody>
+                            <Flex gap={{ default: "gapSm" }} flexWrap={{ default: "wrap" }}>
+                              {Object.entries(counts).map(([status, value]) => (
+                                <Flex key={status} gap={{ default: "gapXs" }} alignItems={{ default: "alignItemsCenter" }}>
+                                  <StatusPill status={status} />
+                                  <Text component="small">{value}</Text>
+                                </Flex>
+                              ))}
+                            </Flex>
+                          </CardBody>
+                        </Card>
+                      ))}
+                    </Gallery>
+                  </CardBody>
+                </Card>
+              </GridItem>
+            </Grid>
+          </StackItem>
 
-          <section className="page-columns">
-            <article className="card">
-              <div className="card__header">
-                <div>
-                  <h3>Automation estate coverage</h3>
-                  <p>Resource types discovered from controller, EDA, and automation hub integrations.</p>
-                </div>
-                <Link className="secondary-button secondary-button--small" to="/search">
-                  Search inventory
-                </Link>
-              </div>
-              {topResources.length === 0 ? (
-                <EmptyState title="No inventory collected" description="Queue a sync to populate templates, projects, activations, repositories, and other tracked resources." />
-              ) : (
-                <div className="meter-stack">
-                  {topResources.map(([resourceType, count]) => (
-                    <div key={resourceType} className="meter-row">
-                      <span>{resourceType.replaceAll("_", " ")}</span>
-                      <div className="meter">
-                        <div className="meter__fill meter__fill--healthy" style={{ width: `${Math.min(count * 10, 100)}%` }} />
-                      </div>
-                      <strong>{count}</strong>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </article>
+          <StackItem>
+            <Grid hasGutter>
+              <GridItem lg={6}>
+                <Card isFlat isFullHeight>
+                  <CardHeader>
+                    <Flex
+                      justifyContent={{ default: "justifyContentSpaceBetween" }}
+                      alignItems={{ default: "alignItemsFlexStart" }}
+                      flexWrap={{ default: "wrap" }}
+                      gap={{ default: "gapSm" }}
+                      style={{ width: "100%" }}
+                    >
+                      <Stack>
+                        <StackItem>
+                          <Title headingLevel="h2" size="lg">
+                            Automation estate coverage
+                          </Title>
+                        </StackItem>
+                        <StackItem>
+                          <Text component="p" className="aam-muted">
+                            Resource types discovered from controller, EDA, and automation hub integrations.
+                          </Text>
+                        </StackItem>
+                      </Stack>
+                      <LinkButton to="/search" variant="link" isInline>
+                        Search inventory
+                      </LinkButton>
+                    </Flex>
+                  </CardHeader>
+                  <CardBody>
+                    {topResources.length === 0 ? (
+                      <EmptyState
+                        title="No inventory collected"
+                        description="Queue a sync to populate templates, projects, activations, repositories, and other tracked resources."
+                      />
+                    ) : (
+                      <Stack hasGutter>
+                        {topResources.map(([resourceType, count]) => (
+                          <StackItem key={resourceType}>
+                            <Progress
+                              title={humanize(resourceType)}
+                              value={Math.min(count * 10, 100)}
+                              measureLocation="outside"
+                              label={String(count)}
+                              valueText={`${count} discovered resources`}
+                              variant="success"
+                            />
+                          </StackItem>
+                        ))}
+                      </Stack>
+                    )}
+                  </CardBody>
+                </Card>
+              </GridItem>
+              <GridItem lg={6}>
+                <Card isFlat isFullHeight>
+                  <CardHeader>
+                    <Flex
+                      justifyContent={{ default: "justifyContentSpaceBetween" }}
+                      alignItems={{ default: "alignItemsFlexStart" }}
+                      flexWrap={{ default: "wrap" }}
+                      gap={{ default: "gapSm" }}
+                      style={{ width: "100%" }}
+                    >
+                      <Stack>
+                        <StackItem>
+                          <Title headingLevel="h2" size="lg">
+                            Platform interface adoption
+                          </Title>
+                        </StackItem>
+                        <StackItem>
+                          <Text component="p" className="aam-muted">
+                            Provisioning, runtime, portal, and trust patterns derived from the broader Ansible platform repositories.
+                          </Text>
+                        </StackItem>
+                      </Stack>
+                      <LinkButton to="/environments" variant="link" isInline>
+                        Edit environment interfaces
+                      </LinkButton>
+                    </Flex>
+                  </CardHeader>
+                  <CardBody>
+                    {topIntegrations.length === 0 ? (
+                      <EmptyState
+                        title="No platform interfaces declared"
+                        description="Use the structured registration fields to declare operators, Terraform, runner, receptor, portal, and trust integrations."
+                      />
+                    ) : (
+                      <Stack hasGutter>
+                        {topIntegrations.map(([integration, count]) => (
+                          <StackItem key={integration}>
+                            <Progress
+                              title={humanize(integration.replace("management:", ""))}
+                              value={Math.min(count * 20, 100)}
+                              measureLocation="outside"
+                              label={String(count)}
+                              valueText={`${count} environments`}
+                              variant="success"
+                            />
+                          </StackItem>
+                        ))}
+                      </Stack>
+                    )}
+                  </CardBody>
+                </Card>
+              </GridItem>
+            </Grid>
+          </StackItem>
 
-            <article className="card">
-              <div className="card__header">
-                <div>
-                  <h3>Platform interface adoption</h3>
-                  <p>Provisioning, runtime, portal, and trust patterns derived from the broader Ansible platform repositories.</p>
-                </div>
-                <Link className="secondary-button secondary-button--small" to="/environments">
-                  Edit environment interfaces
-                </Link>
-              </div>
-              {topIntegrations.length === 0 ? (
-                <EmptyState title="No platform interfaces declared" description="Use the structured registration fields to declare operators, Terraform, runner, receptor, portal, and trust integrations." />
-              ) : (
-                <div className="meter-stack">
-                  {topIntegrations.map(([integration, count]) => (
-                    <div key={integration} className="meter-row">
-                      <span>{integration.replace("management:", "").replaceAll("_", " ")}</span>
-                      <div className="meter">
-                        <div className="meter__fill meter__fill--healthy" style={{ width: `${Math.min(count * 20, 100)}%` }} />
-                      </div>
-                      <strong>{count}</strong>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </article>
-          </section>
+          <StackItem>
+            <Card isFlat>
+              <CardHeader>
+                <Flex
+                  justifyContent={{ default: "justifyContentSpaceBetween" }}
+                  alignItems={{ default: "alignItemsFlexStart" }}
+                  flexWrap={{ default: "wrap" }}
+                  gap={{ default: "gapSm" }}
+                  style={{ width: "100%" }}
+                >
+                  <Stack>
+                    <StackItem>
+                      <Title headingLevel="h2" size="lg">
+                        Recent activity
+                      </Title>
+                    </StackItem>
+                    <StackItem>
+                      <Text component="p" className="aam-muted">
+                        Syncs and remote actions aligned to an AAP-style activity stream.
+                      </Text>
+                    </StackItem>
+                  </Stack>
+                  <LinkButton to="/activity" variant="link" isInline>
+                    View activity stream
+                  </LinkButton>
+                </Flex>
+              </CardHeader>
+              <CardBody>
+                {activity.length === 0 ? (
+                  <EmptyState
+                    title="No activity recorded"
+                    description="Register an environment, queue a sync, or launch a managed action to populate the feed."
+                  />
+                ) : (
+                  <ActivityTable items={activity.slice(0, 6)} />
+                )}
+              </CardBody>
+            </Card>
+          </StackItem>
 
-          <section className="page-columns">
-            <article className="card">
-              <div className="card__header">
-                <div>
-                  <h3>Recent activity</h3>
-                  <p>Syncs and remote actions aligned to an AAP-style activity stream.</p>
-                </div>
-                <Link className="secondary-button secondary-button--small" to="/activity">
-                  View activity stream
-                </Link>
-              </div>
-              {activity.length === 0 ? (
-                <EmptyState title="No activity recorded" description="Register an environment, queue a sync, or launch a managed action to populate the feed." />
-              ) : (
-                <ActivityTable items={activity.slice(0, 6)} />
-              )}
-            </article>
-          </section>
-
-          <section className="card">
-            <div className="card__header">
-              <div>
-                <h3>Environment registry</h3>
-                <p>Operational view of every registered automation footprint.</p>
-              </div>
-            </div>
-            <div className="table-shell">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th>Version</th>
-                    <th>Health score</th>
-                    <th>Last sync</th>
-                    <th>Groups</th>
-                  </tr>
-                </thead>
-                <tbody>
+          <StackItem>
+            <Card isFlat>
+              <CardHeader>
+                <Stack>
+                  <StackItem>
+                    <Title headingLevel="h2" size="lg">
+                      Environment registry
+                    </Title>
+                  </StackItem>
+                  <StackItem>
+                    <Text component="p" className="aam-muted">
+                      Operational view of every registered automation footprint.
+                    </Text>
+                  </StackItem>
+                </Stack>
+              </CardHeader>
+              <CardBody>
+                <Stack hasGutter>
                   {data.environment_summaries.map((environment) => (
-                    <tr key={environment.id}>
-                      <td>
-                        <Link to={`/environments/${environment.id}`}>{environment.name}</Link>
-                      </td>
-                      <td>
-                        <StatusPill status={environment.status} />
-                      </td>
-                      <td>{environment.platform_version ?? "Unknown"}</td>
-                      <td>{String(environment.summary.health_score ?? "n/a")}</td>
-                      <td>{environment.last_synced_at ? new Date(environment.last_synced_at).toLocaleString() : "Never"}</td>
-                      <td>{environment.groupings.join(", ") || "Unassigned"}</td>
-                    </tr>
+                    <Card key={environment.id} isFlat isCompact>
+                      <CardBody>
+                        <Grid hasGutter>
+                          <GridItem md={4}>
+                            <Link to={`/environments/${environment.id}`}>
+                              <Title headingLevel="h3" size="md">
+                                {environment.name}
+                              </Title>
+                            </Link>
+                            <Text component="small" className="aam-muted">
+                              {environment.groupings.join(", ") || environment.slug}
+                            </Text>
+                          </GridItem>
+                          <GridItem md={2}>
+                            <Text component="small" className="aam-muted">
+                              Status
+                            </Text>
+                            <div>
+                              <StatusPill status={environment.status} />
+                            </div>
+                          </GridItem>
+                          <GridItem md={2}>
+                            <Text component="small" className="aam-muted">
+                              Version
+                            </Text>
+                            <div>{environment.platform_version ?? "Unknown"}</div>
+                          </GridItem>
+                          <GridItem md={2}>
+                            <Text component="small" className="aam-muted">
+                              Health score
+                            </Text>
+                            <div>{String(environment.summary.health_score ?? "n/a")}</div>
+                          </GridItem>
+                          <GridItem md={2}>
+                            <Text component="small" className="aam-muted">
+                              Last sync
+                            </Text>
+                            <div>{formatDateTime(environment.last_synced_at)}</div>
+                          </GridItem>
+                        </Grid>
+                      </CardBody>
+                    </Card>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                </Stack>
+              </CardBody>
+            </Card>
+          </StackItem>
         </>
       )}
-    </div>
+    </Stack>
   );
 }

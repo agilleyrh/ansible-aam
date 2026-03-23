@@ -1,7 +1,10 @@
-import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+
+import { ExclamationCircleIcon } from "@patternfly/react-icons";
 
 import { AppLayout } from "./components/layout";
 import { EmptyState } from "./components/empty-state";
+import { LinkButton } from "./components/link-button";
 import { ActivityPage } from "./pages/activity";
 import { DashboardPage } from "./pages/dashboard";
 import { EnvironmentDetailPage } from "./pages/environment-detail";
@@ -16,7 +19,12 @@ function NotFoundPage() {
     <EmptyState
       title="Page not found"
       description="The page you are looking for does not exist or has been moved."
-      action={<Link className="primary-button" to="/">Return to dashboard</Link>}
+      icon={ExclamationCircleIcon}
+      action={
+        <LinkButton to="/" variant="primary">
+          Return to dashboard
+        </LinkButton>
+      }
     />
   );
 }

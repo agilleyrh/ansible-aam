@@ -1,10 +1,16 @@
 import { FormEvent, useState } from "react";
+import type { SyntheticEvent } from "react";
+
+import { Alert, Card, CardBody, CardHeader, Grid, GridItem, SearchInput, Stack, StackItem, Text, Title } from "@patternfly/react-core";
+import { SearchIcon } from "@patternfly/react-icons";
 import { Link } from "react-router-dom";
 
 import { api } from "../api";
 import { EmptyState } from "../components/empty-state";
+import { PageHeader } from "../components/page-header";
 import { StatusPill } from "../components/status-pill";
 import type { SearchResult } from "../types";
+import { humanize } from "../utils";
 
 export function SearchPage() {
   const [query, setQuery] = useState("");
@@ -13,8 +19,8 @@ export function SearchPage() {
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function onSubmit(event?: FormEvent | SyntheticEvent) {
+    event?.preventDefault();
     setError(null);
     setSearched(true);
     setSearching(true);
@@ -29,66 +35,123 @@ export function SearchPage() {
   }
 
   return (
-    <div className="page-stack">
-      <section className="page-header">
-        <div>
-          <p className="eyebrow">Search</p>
-          <h2>Search the collected automation inventory</h2>
-          <p className="page-header__description">Search templates, workflows, projects, credentials, activations, repositories, and collections across all synced AAP environments.</p>
-        </div>
-      </section>
+    <Stack hasGutter>
+      <StackItem>
+        <PageHeader
+          section="Search"
+          title="Search the collected automation inventory"
+          description="Search templates, workflows, projects, credentials, activations, repositories, and collections across all synced AAP environments."
+        />
+      </StackItem>
 
-      <section className="card">
-        <form className="toolbar toolbar--form" onSubmit={onSubmit}>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} className="text-input text-input--search" placeholder="Search resources by name, type, service, or environment" />
-          <button type="submit" className="primary-button" disabled={query.trim().length < 2 || searching}>
-            {searching ? "Searching..." : "Search inventory"}
-          </button>
-        </form>
-        {error ? <div className="inline-alert inline-alert--danger">{error}</div> : null}
-      </section>
+      <StackItem>
+        <Card isFlat>
+          <CardBody>
+            <form onSubmit={onSubmit}>
+              <SearchInput
+                value={query}
+                onChange={(_, value) => setQuery(value)}
+                onSearch={(_, value) => {
+                  setQuery(value);
+                  void onSubmit();
+                }}
+                onClear={() => {
+                  setQuery("");
+                  setResults([]);
+                  setSearched(false);
+                  setError(null);
+                }}
+                placeholder="Search resources by name, type, service, or environment"
+                submitSearchButtonLabel="Search inventory"
+                aria-label="Search collected inventory"
+                isDisabled={searching}
+              />
+            </form>
+            {error ? <Alert isInline variant="danger" title={error} /> : null}
+          </CardBody>
+        </Card>
+      </StackItem>
 
-      <section className="card">
-        {!searched ? (
-          <EmptyState title="Start with a resource query" description="Search becomes useful after environments are registered and synced, but you can query as soon as inventory is available." />
-        ) : results.length === 0 ? (
-          <EmptyState title="No matching resources found" description="Try a broader term or make sure the relevant environment has completed a successful sync." />
-        ) : (
-          <div className="table-shell">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Environment</th>
-                  <th>Service</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
+      <StackItem>
+        <Card isFlat>
+          <CardHeader>
+            <Stack>
+              <StackItem>
+                <Title headingLevel="h2" size="lg">
+                  Search results
+                </Title>
+              </StackItem>
+              <StackItem>
+                <Text component="p" className="aam-muted">
+                  Query across all registered environments or narrow the term to a specific service or resource type.
+                </Text>
+              </StackItem>
+            </Stack>
+          </CardHeader>
+          <CardBody>
+            {!searched ? (
+              <EmptyState
+                title="Start with a resource query"
+                description="Search becomes useful after environments are registered and synced, but you can query as soon as inventory is available."
+                icon={SearchIcon}
+              />
+            ) : results.length === 0 ? (
+              <EmptyState
+                title="No matching resources found"
+                description="Try a broader term or make sure the relevant environment has completed a successful sync."
+                icon={SearchIcon}
+              />
+            ) : (
+              <Stack hasGutter>
                 {results.map((result) => (
-                  <tr key={result.id}>
-                    <td>
-                      <div className="table-primary">
-                        <span>{result.name}</span>
-                        <span>{result.url ?? result.id}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <Link to={`/environments/${result.environment_id}`}>{result.environment_name}</Link>
-                    </td>
-                    <td>{result.service}</td>
-                    <td>{result.resource_type.replaceAll("_", " ")}</td>
-                    <td>
-                      <StatusPill status={result.status} />
-                    </td>
-                  </tr>
+                  <Card key={result.id} isFlat isCompact>
+                    <CardBody>
+                      <Grid hasGutter>
+                        <GridItem md={4}>
+                          <Title headingLevel="h3" size="md">
+                            {result.name}
+                          </Title>
+                          <Text component="small" className="aam-muted">
+                            {result.url ?? result.id}
+                          </Text>
+                        </GridItem>
+                        <GridItem md={2}>
+                          <Text component="small" className="aam-muted">
+                            Environment
+                          </Text>
+                          <div>
+                            <Link to={`/environments/${result.environment_id}`}>{result.environment_name}</Link>
+                          </div>
+                        </GridItem>
+                        <GridItem md={2}>
+                          <Text component="small" className="aam-muted">
+                            Service
+                          </Text>
+                          <div>{result.service}</div>
+                        </GridItem>
+                        <GridItem md={2}>
+                          <Text component="small" className="aam-muted">
+                            Type
+                          </Text>
+                          <div>{humanize(result.resource_type)}</div>
+                        </GridItem>
+                        <GridItem md={2}>
+                          <Text component="small" className="aam-muted">
+                            Status
+                          </Text>
+                          <div>
+                            <StatusPill status={result.status} />
+                          </div>
+                        </GridItem>
+                      </Grid>
+                    </CardBody>
+                  </Card>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-    </div>
+              </Stack>
+            )}
+          </CardBody>
+        </Card>
+      </StackItem>
+    </Stack>
   );
 }

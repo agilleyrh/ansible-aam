@@ -1,4 +1,27 @@
-import { NavLink, Outlet } from "react-router-dom";
+import {
+  Card,
+  CardBody,
+  CardHeader,
+  Masthead,
+  MastheadBrand,
+  MastheadContent,
+  MastheadMain,
+  Nav,
+  NavItem,
+  NavList,
+  Page,
+  PageSection,
+  PageSectionVariants,
+  PageSidebar,
+  PageSidebarBody,
+  Stack,
+  StackItem,
+  Text,
+  Title,
+} from "@patternfly/react-core";
+import { Link as RouterLink, Outlet, useLocation } from "react-router-dom";
+
+import { LinkButton } from "./link-button";
 
 const links = [
   { to: "/", label: "Overview" },
@@ -17,47 +40,82 @@ const quickLinks = [
 ];
 
 export function AppLayout() {
-  return (
-    <div className="app-shell">
-      <header className="masthead">
-        <div className="masthead__brand">
-          <div className="masthead__mark">A</div>
-          <div>
-            <p className="eyebrow eyebrow--inverse">Red Hat Ansible Automation Platform</p>
-            <h1>Advanced Automation Manager</h1>
+  const location = useLocation();
+
+  function isActivePath(path: string) {
+    return path === "/" ? location.pathname === path : location.pathname === path || location.pathname.startsWith(`${path}/`);
+  }
+
+  const header = (
+    <Masthead backgroundColor="dark">
+      <MastheadMain>
+        <MastheadBrand component="a" href="/">
+          <div className="aam-brand">
+            <div className="aam-brand__mark">A</div>
+            <div>
+              <Text component="small" className="aam-brand__eyebrow">
+                Red Hat Ansible Automation Platform
+              </Text>
+              <Title headingLevel="h1" size="lg" className="aam-brand__title">
+                Advanced Automation Manager
+              </Title>
+            </div>
           </div>
-        </div>
-        <nav className="masthead__quicklinks" aria-label="Quick navigation">
+        </MastheadBrand>
+      </MastheadMain>
+      <MastheadContent>
+        <div className="aam-masthead-links">
           {quickLinks.map((link) => (
-            <NavLink key={link.to} to={link.to} className="masthead__quicklink">
+            <LinkButton key={link.to} to={link.to} variant={isActivePath(link.to) ? "primary" : "secondary"} size="sm">
               {link.label}
-            </NavLink>
+            </LinkButton>
           ))}
-        </nav>
-      </header>
+        </div>
+      </MastheadContent>
+    </Masthead>
+  );
 
-      <div className="workspace">
-        <aside className="sidebar">
-          <div className="sidebar__section">
-            <p className="sidebar__title">Automation fleet</p>
-            <nav className="sidebar__nav" aria-label="Main navigation">
-              {links.map((link) => (
-                <NavLink key={link.to} to={link.to} end={link.to === "/"} className="sidebar__link">
-                  {link.label}
-                </NavLink>
-              ))}
-            </nav>
-          </div>
-          <div className="sidebar__section sidebar__section--secondary">
-            <p className="sidebar__title">Operating model</p>
-            <p>Register AAP environments, validate service health, run inventory syncs, and review governance results from one hub.</p>
-          </div>
-        </aside>
+  const sidebar = (
+    <PageSidebar theme="light" isSidebarOpen>
+      <PageSidebarBody usePageInsets isFilled>
+        <Stack hasGutter>
+          <StackItem>
+            <Nav aria-label="Main navigation" theme="light">
+              <NavList>
+                {links.map((link) => (
+                  <NavItem key={link.to} to={link.to} isActive={isActivePath(link.to)} itemId={link.to}>
+                    <RouterLink to={link.to}>{link.label}</RouterLink>
+                  </NavItem>
+                ))}
+              </NavList>
+            </Nav>
+          </StackItem>
+          <StackItem isFilled>
+            <Card isFlat isCompact className="aam-sidebar-card">
+              <CardHeader>
+                <Title headingLevel="h2" size="md">
+                  Operating model
+                </Title>
+              </CardHeader>
+              <CardBody>
+                <Text component="p">
+                  Register AAP environments, validate service health, run inventory syncs, and review governance results from one control hub.
+                </Text>
+              </CardBody>
+            </Card>
+          </StackItem>
+        </Stack>
+      </PageSidebarBody>
+    </PageSidebar>
+  );
 
-        <main className="content">
+  return (
+    <Page header={header} sidebar={sidebar} mainAriaLabel="Advanced Automation Manager">
+      <PageSection variant={PageSectionVariants.light} isFilled>
+        <div className="aam-page-stack">
           <Outlet />
-        </main>
-      </div>
-    </div>
+        </div>
+      </PageSection>
+    </Page>
   );
 }

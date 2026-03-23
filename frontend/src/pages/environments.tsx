@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
+
+import { Alert, Bullseye, Button, Card, CardBody, CardHeader, Grid, GridItem, Stack, StackItem, Text, Title } from "@patternfly/react-core";
 import { Link } from "react-router-dom";
 
 import { api } from "../api";
 import { EmptyState } from "../components/empty-state";
 import { EnvironmentForm } from "../components/environment-form";
+import { LinkButton } from "../components/link-button";
+import { PageHeader } from "../components/page-header";
 import { StatusPill } from "../components/status-pill";
 import type { EnvironmentMutationPayload, EnvironmentSummary } from "../types";
+import { formatDateTime } from "../utils";
 
 export function EnvironmentsPage() {
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([]);
@@ -63,85 +68,135 @@ export function EnvironmentsPage() {
   }
 
   return (
-    <div className="page-stack">
-      <section className="page-header">
-        <div>
-          <p className="eyebrow">Environments</p>
-          <h2>Register and manage AAP environments</h2>
-          <p className="page-header__description">Add platform gateway endpoints, controller APIs, EDA services, and automation hubs that should be collected and governed.</p>
-        </div>
-      </section>
-
-      {message ? <div className="inline-alert inline-alert--success">{message}</div> : null}
-      {error ? <div className="inline-alert inline-alert--danger">{error}</div> : null}
-
-      <section className="page-columns page-columns--wide-right">
-        <article className="card">
-          <div className="card__header">
-            <div>
-              <h3>Registered environments</h3>
-              <p>{environments.length === 0 ? "No AAP environments are registered yet." : "Use the detail view to edit credentials, service endpoints, and sync settings."}</p>
-            </div>
-          </div>
-
-          {loading ? (
-            <p style={{ padding: "1rem", color: "var(--pf-text-muted)" }}>Loading environments...</p>
-          ) : environments.length === 0 ? (
-            <EmptyState title="No environments registered" description="Use the registration form to add your first Ansible Automation Platform deployment." />
-          ) : (
-            <div className="table-shell">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th>Owner</th>
-                    <th>Last sync</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {environments.map((environment) => (
-                    <tr key={environment.id}>
-                      <td>
-                        <div className="table-primary">
-                          <Link to={`/environments/${environment.id}`}>{environment.name}</Link>
-                          <span>{environment.groupings.join(", ") || environment.slug}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <StatusPill status={environment.status} />
-                      </td>
-                      <td>{environment.owner || "Unassigned"}</td>
-                      <td>{environment.last_synced_at ? new Date(environment.last_synced_at).toLocaleString() : "Never"}</td>
-                      <td>
-                        <div className="row-actions">
-                          <Link className="secondary-button secondary-button--small" to={`/environments/${environment.id}`}>
-                            View details
-                          </Link>
-                          <button className="secondary-button secondary-button--small" type="button" disabled={syncingId === environment.id} onClick={() => queueSync(environment)}>
-                            {syncingId === environment.id ? "Queueing..." : "Queue sync"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </article>
-
-        <EnvironmentForm
-          mode="create"
-          title="Register environment"
-          description="Create a managed environment record with its gateway, services, and collection credentials."
-          submitLabel="Register environment"
-          busy={busy}
-          errorMessage={error}
-          onSubmit={handleCreate}
+    <Stack hasGutter>
+      <StackItem>
+        <PageHeader
+          section="Environments"
+          title="Register and manage AAP environments"
+          description="Add platform gateway endpoints, controller APIs, EDA services, and automation hubs that should be collected and governed."
         />
-      </section>
-    </div>
+      </StackItem>
+
+      {message ? (
+        <StackItem>
+          <Alert isInline variant="success" title={message} />
+        </StackItem>
+      ) : null}
+      {error ? (
+        <StackItem>
+          <Alert isInline variant="danger" title={error} />
+        </StackItem>
+      ) : null}
+
+      <StackItem>
+        <Grid hasGutter>
+          <GridItem lg={5}>
+            <Card isFlat isFullHeight>
+              <CardHeader>
+                <Stack>
+                  <StackItem>
+                    <Title headingLevel="h2" size="lg">
+                      Registered environments
+                    </Title>
+                  </StackItem>
+                  <StackItem>
+                    <Text component="p" className="aam-muted">
+                      {environments.length === 0
+                        ? "No AAP environments are registered yet."
+                        : "Use the detail view to edit credentials, service endpoints, and sync settings."}
+                    </Text>
+                  </StackItem>
+                </Stack>
+              </CardHeader>
+              <CardBody>
+                {loading ? (
+                  <Bullseye>
+                    <Text component="p" className="aam-muted">
+                      Loading environments...
+                    </Text>
+                  </Bullseye>
+                ) : environments.length === 0 ? (
+                  <EmptyState
+                    title="No environments registered"
+                    description="Use the registration form to add your first Ansible Automation Platform deployment."
+                  />
+                ) : (
+                  <Stack hasGutter>
+                    {environments.map((environment) => (
+                      <Card key={environment.id} isFlat isCompact>
+                        <CardBody>
+                          <Stack hasGutter>
+                            <StackItem>
+                              <Link to={`/environments/${environment.id}`}>
+                                <Title headingLevel="h3" size="md">
+                                  {environment.name}
+                                </Title>
+                              </Link>
+                              <Text component="small" className="aam-muted">
+                                {environment.groupings.join(", ") || environment.slug}
+                              </Text>
+                            </StackItem>
+                            <StackItem>
+                              <Grid hasGutter>
+                                <GridItem md={4}>
+                                  <Text component="small" className="aam-muted">
+                                    Status
+                                  </Text>
+                                  <div>
+                                    <StatusPill status={environment.status} />
+                                  </div>
+                                </GridItem>
+                                <GridItem md={4}>
+                                  <Text component="small" className="aam-muted">
+                                    Owner
+                                  </Text>
+                                  <div>{environment.owner || "Unassigned"}</div>
+                                </GridItem>
+                                <GridItem md={4}>
+                                  <Text component="small" className="aam-muted">
+                                    Last sync
+                                  </Text>
+                                  <div>{formatDateTime(environment.last_synced_at)}</div>
+                                </GridItem>
+                              </Grid>
+                            </StackItem>
+                            <StackItem>
+                              <LinkButton to={`/environments/${environment.id}`} variant="secondary" size="sm">
+                                View details
+                              </LinkButton>{" "}
+                              <Button
+                                type="button"
+                                variant="link"
+                                isInline
+                                isLoading={syncingId === environment.id}
+                                isDisabled={syncingId === environment.id}
+                                onClick={() => queueSync(environment)}
+                              >
+                                {syncingId === environment.id ? "Queueing..." : "Queue sync"}
+                              </Button>
+                            </StackItem>
+                          </Stack>
+                        </CardBody>
+                      </Card>
+                    ))}
+                  </Stack>
+                )}
+              </CardBody>
+            </Card>
+          </GridItem>
+          <GridItem lg={7}>
+            <EnvironmentForm
+              mode="create"
+              title="Register environment"
+              description="Create a managed environment record with its gateway, services, and collection credentials."
+              submitLabel="Register environment"
+              busy={busy}
+              errorMessage={error}
+              onSubmit={handleCreate}
+            />
+          </GridItem>
+        </Grid>
+      </StackItem>
+    </Stack>
   );
 }

@@ -1,4 +1,29 @@
 import { useEffect, useState } from "react";
+
+import {
+  Alert,
+  Bullseye,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  CodeBlock,
+  CodeBlockCode,
+  DescriptionList,
+  DescriptionListDescription,
+  DescriptionListGroup,
+  DescriptionListTerm,
+  FormSelect,
+  FormSelectOption,
+  Gallery,
+  Grid,
+  GridItem,
+  SearchInput,
+  Stack,
+  StackItem,
+  Text,
+  Title,
+} from "@patternfly/react-core";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../api";
@@ -6,9 +31,12 @@ import { describeCapabilityProfile, parseCapabilityProfile } from "../capabiliti
 import { ActivityTable } from "../components/activity-table";
 import { EmptyState } from "../components/empty-state";
 import { EnvironmentForm } from "../components/environment-form";
+import { LinkButton } from "../components/link-button";
+import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
 import { StatusPill } from "../components/status-pill";
 import type { ActivityEvent, EnvironmentDetail, EnvironmentMutationPayload, RemoteActionName, Resource } from "../types";
+import { formatDateTime, humanize, stringifyValue } from "../utils";
 
 type ResourceAction = {
   action: RemoteActionName;
@@ -70,20 +98,26 @@ export function EnvironmentDetailPage() {
       api.environment(environmentId, signal),
       api.activity(environmentId, signal),
     ]);
-    if (signal?.aborted) return;
+    if (signal?.aborted) {
+      return;
+    }
     if (detailResult.status === "fulfilled") {
       setEnvironment(detailResult.value);
       setError(null);
     } else {
       setError(detailResult.reason?.message ?? "Failed to load environment");
     }
-    if (activityResult.status === "fulfilled") setActivity(activityResult.value);
+    if (activityResult.status === "fulfilled") {
+      setActivity(activityResult.value);
+    }
   }
 
   useEffect(() => {
     const controller = new AbortController();
     loadEnvironment(controller.signal).catch((err: Error) => {
-      if (!controller.signal.aborted) setError(err.message);
+      if (!controller.signal.aborted) {
+        setError(err.message);
+      }
     });
     return () => controller.abort();
   }, [environmentId]);
@@ -186,11 +220,17 @@ export function EnvironmentDetailPage() {
   }
 
   if (error && !environment) {
-    return <section className="card">Environment unavailable: {error}</section>;
+    return <Alert isInline variant="danger" title={`Environment unavailable: ${error}`} />;
   }
 
   if (!environment) {
-    return <section className="card">Loading environment...</section>;
+    return (
+      <Bullseye>
+        <Card isFlat>
+          <CardBody>Loading environment...</CardBody>
+        </Card>
+      </Bullseye>
+    );
   }
 
   const services = Array.from(new Set(environment.resources.map((resource) => resource.service))).sort();
@@ -214,8 +254,8 @@ export function EnvironmentDetailPage() {
     return haystack.includes(normalizedQuery);
   });
 
-  const templateCount = environment.resources.filter((resource) =>
-    resource.resource_type === "job_template" || resource.resource_type === "workflow_job_template",
+  const templateCount = environment.resources.filter(
+    (resource) => resource.resource_type === "job_template" || resource.resource_type === "workflow_job_template",
   ).length;
   const projectCount = environment.resources.filter((resource) => resource.resource_type === "project").length;
   const activationCount = environment.resources.filter((resource) => resource.resource_type === "activation").length;
@@ -231,274 +271,449 @@ export function EnvironmentDetailPage() {
   ].filter((item): item is { label: string; href: string } => Boolean(item.href));
 
   return (
-    <div className="page-stack">
-      <section className="page-header">
-        <div>
-          <p className="eyebrow">Environment detail</p>
-          <h2>{environment.name}</h2>
-          <p className="page-header__description">{environment.description || "Managed AAP environment with registered endpoints, collection settings, and component posture."}</p>
-        </div>
-        <div className="page-header__actions">
-          <StatusPill status={environment.status} />
-          <button className="secondary-button" type="button" disabled={syncing} onClick={handleSync}>
-            {syncing ? "Queueing..." : "Queue sync"}
-          </button>
-          <button className="danger-button" type="button" disabled={busy} onClick={handleDelete}>
-            Delete environment
-          </button>
-        </div>
-      </section>
+    <Stack hasGutter>
+      <StackItem>
+        <PageHeader
+          section="Environment detail"
+          title={environment.name}
+          description={
+            environment.description || "Managed AAP environment with registered endpoints, collection settings, and component posture."
+          }
+          actions={
+            <>
+              <StatusPill status={environment.status} />
+              <Button type="button" variant="secondary" isLoading={syncing} isDisabled={syncing} onClick={handleSync}>
+                {syncing ? "Queueing..." : "Queue sync"}
+              </Button>
+              <Button type="button" variant="danger" isDisabled={busy} onClick={handleDelete}>
+                Delete environment
+              </Button>
+            </>
+          }
+        />
+      </StackItem>
 
-      {message ? <div className="inline-alert inline-alert--success">{message}</div> : null}
-      {error ? <div className="inline-alert inline-alert--danger">{error}</div> : null}
-      {environment.last_sync_error ? <div className="inline-alert inline-alert--danger">Last sync failed: {environment.last_sync_error}</div> : null}
+      {message ? (
+        <StackItem>
+          <Alert isInline variant="success" title={message} />
+        </StackItem>
+      ) : null}
+      {error ? (
+        <StackItem>
+          <Alert isInline variant="danger" title={error} />
+        </StackItem>
+      ) : null}
+      {environment.last_sync_error ? (
+        <StackItem>
+          <Alert isInline variant="danger" title={`Last sync failed: ${environment.last_sync_error}`} />
+        </StackItem>
+      ) : null}
 
-      <section className="card-grid card-grid--four">
-        <StatCard label="Version" value={environment.platform_version ?? "Unknown"} detail="Most recent platform version reported" />
-        <StatCard label="Health score" value={String(environment.summary.health_score ?? "n/a")} detail="Calculated from collected service health" />
-        <StatCard label="Tracked resources" value={String(environment.resources.length)} detail="Current inventory stored in the hub" />
-        <StatCard label="Last sync" value={environment.last_synced_at ? new Date(environment.last_synced_at).toLocaleString() : "Never"} detail="Latest successful collection timestamp" />
-      </section>
+      <StackItem>
+        <Gallery hasGutter minWidths={{ default: "180px", lg: "220px" }}>
+          <StatCard label="Version" value={environment.platform_version ?? "Unknown"} detail="Most recent platform version reported" />
+          <StatCard label="Health score" value={String(environment.summary.health_score ?? "n/a")} detail="Calculated from collected service health" />
+          <StatCard label="Tracked resources" value={String(environment.resources.length)} detail="Current inventory stored in the hub" />
+          <StatCard label="Last sync" value={formatDateTime(environment.last_synced_at)} detail="Latest successful collection timestamp" />
+          <StatCard label="Templates" value={templateCount} detail="Job templates and workflow templates" />
+          <StatCard label="Projects" value={projectCount} detail="Controller and EDA project content" />
+          <StatCard label="Activations" value={activationCount} detail="EDA rulebook activations currently tracked" />
+          <StatCard label="Hub content" value={hubContentCount} detail="Repositories and collections available from automation hub" />
+        </Gallery>
+      </StackItem>
 
-      <section className="card-grid card-grid--four">
-        <StatCard label="Templates" value={templateCount} detail="Job templates and workflow templates" />
-        <StatCard label="Projects" value={projectCount} detail="Controller and EDA project content" />
-        <StatCard label="Activations" value={activationCount} detail="EDA rulebook activations currently tracked" />
-        <StatCard label="Hub content" value={hubContentCount} detail="Repositories and collections available from automation hub" />
-      </section>
-
-      <section className="page-columns">
-        <article className="card">
-          <div className="card__header">
-            <div>
-              <h3>Registered endpoints</h3>
-              <p>Remote services currently configured for collection and action relay.</p>
-            </div>
-          </div>
-          <dl className="details-list">
-            <div>
-              <dt>Platform URL</dt>
-              <dd>{environment.platform_url || "Not set"}</dd>
-            </div>
-            <div>
-              <dt>Gateway URL</dt>
-              <dd>{environment.gateway_url}</dd>
-            </div>
-            <div>
-              <dt>Controller URL</dt>
-              <dd>{environment.controller_url || "Not configured"}</dd>
-            </div>
-            <div>
-              <dt>EDA URL</dt>
-              <dd>{environment.eda_url || "Not configured"}</dd>
-            </div>
-            <div>
-              <dt>Automation Hub URL</dt>
-              <dd>{environment.hub_url || "Not configured"}</dd>
-            </div>
-            <div>
-              <dt>Authentication</dt>
-              <dd>{environment.auth_mode}</dd>
-            </div>
-            <div>
-              <dt>Verify TLS</dt>
-              <dd>{environment.verify_ssl ? "Enabled" : "Disabled"}</dd>
-            </div>
-            <div>
-              <dt>Tags / groups</dt>
-              <dd>{[...environment.tags, ...environment.groupings].join(", ") || "None set"}</dd>
-            </div>
-          </dl>
-          <div className="link-cluster">
-            {endpointLinks.map((item) => (
-              <a key={item.label} className="secondary-button secondary-button--small" href={item.href} target="_blank" rel="noreferrer">
-                {item.label}
-              </a>
-            ))}
-          </div>
-        </article>
-
-        <article className="card">
-          <div className="card__header">
-            <div>
-              <h3>Recent activity stream</h3>
-              <p>Sync runs and remote actions scoped to this environment.</p>
-            </div>
-            <Link className="secondary-button secondary-button--small" to="/activity">
-              View fleet activity
-            </Link>
-          </div>
-          {activity.length === 0 ? (
-            <EmptyState title="No activity yet" description="Queue a sync or run an action against a collected resource to populate the stream." action={<button className="primary-button" type="button" onClick={handleSync}>Queue sync</button>} />
-          ) : (
-            <ActivityTable items={activity.slice(0, 8)} showEnvironment={false} />
-          )}
-        </article>
-      </section>
-
-      <EnvironmentForm
-        mode="edit"
-        initialValue={environment}
-        title="Connection and registration settings"
-        description="Update endpoint locations, authentication, labels, and service behavior for this managed environment."
-        submitLabel="Save changes"
-        busy={busy}
-        errorMessage={error}
-        onSubmit={handleSave}
-      />
-
-      <section className="page-columns">
-        <article className="card">
-          <div className="card__header">
-            <div>
-              <h3>Platform integration profile</h3>
-              <p>Lifecycle, runtime, portal, and trust capabilities mapped from the broader Ansible platform ecosystem.</p>
-            </div>
-          </div>
-          <dl className="details-list">
-            {capabilitySummary.map((item) => (
-              <div key={item.label}>
-                <dt>{item.label}</dt>
-                <dd>{item.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </article>
-
-        <article className="card">
-          <div className="card__header">
-            <div>
-              <h3>Additional capability flags</h3>
-              <p>Any extra capability settings that do not yet map to the structured profile.</p>
-            </div>
-          </div>
-          {Object.keys(extraCapabilities).length === 0 ? (
-            <EmptyState title="No additional capability flags" description="All current capability settings are represented by the structured integration profile." />
-          ) : (
-            <pre className="rule-block">{JSON.stringify(extraCapabilities, null, 2)}</pre>
-          )}
-        </article>
-      </section>
-
-      <section className="card">
-        <div className="card__header">
-          <div>
-            <h3>Service posture</h3>
-            <p>Collected health summaries for each registered AAP component.</p>
-          </div>
-          <Link className="secondary-button secondary-button--small" to="/topology">
-            View topology
-          </Link>
-        </div>
-
-        {environment.snapshots.length === 0 ? (
-          <EmptyState title="No service data collected yet" description="After the first sync, health, counts, and component-specific posture details will appear here." />
-        ) : (
-          <div className="service-stack">
-            {environment.snapshots.map((snapshot) => (
-              <article key={snapshot.service} className="service-card">
-                <div className="service-card__title">
-                  <h4>{snapshot.service.toUpperCase()}</h4>
-                  <StatusPill status={snapshot.health} />
-                </div>
-                <dl className="summary-grid">
-                  {Object.entries(snapshot.summary).map(([key, value]) => (
-                    <div key={key}>
-                      <dt>{key.replaceAll("_", " ")}</dt>
-                      <dd>{typeof value === "object" ? JSON.stringify(value) : String(value)}</dd>
+      <StackItem>
+        <Grid hasGutter>
+          <GridItem lg={6}>
+            <Card isFlat isFullHeight>
+              <CardHeader>
+                <Stack>
+                  <StackItem>
+                    <Title headingLevel="h2" size="lg">
+                      Registered endpoints
+                    </Title>
+                  </StackItem>
+                  <StackItem>
+                    <Text component="p" className="aam-muted">
+                      Remote services currently configured for collection and action relay.
+                    </Text>
+                  </StackItem>
+                </Stack>
+              </CardHeader>
+              <CardBody>
+                <Stack hasGutter>
+                  <StackItem>
+                    <DescriptionList isCompact isHorizontal columnModifier={{ default: "1Col" }}>
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>Platform URL</DescriptionListTerm>
+                        <DescriptionListDescription>{environment.platform_url || "Not set"}</DescriptionListDescription>
+                      </DescriptionListGroup>
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>Gateway URL</DescriptionListTerm>
+                        <DescriptionListDescription>{environment.gateway_url}</DescriptionListDescription>
+                      </DescriptionListGroup>
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>Controller URL</DescriptionListTerm>
+                        <DescriptionListDescription>{environment.controller_url || "Not configured"}</DescriptionListDescription>
+                      </DescriptionListGroup>
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>EDA URL</DescriptionListTerm>
+                        <DescriptionListDescription>{environment.eda_url || "Not configured"}</DescriptionListDescription>
+                      </DescriptionListGroup>
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>Automation Hub URL</DescriptionListTerm>
+                        <DescriptionListDescription>{environment.hub_url || "Not configured"}</DescriptionListDescription>
+                      </DescriptionListGroup>
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>Authentication</DescriptionListTerm>
+                        <DescriptionListDescription>{humanize(environment.auth_mode)}</DescriptionListDescription>
+                      </DescriptionListGroup>
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>Verify TLS</DescriptionListTerm>
+                        <DescriptionListDescription>{environment.verify_ssl ? "Enabled" : "Disabled"}</DescriptionListDescription>
+                      </DescriptionListGroup>
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>Tags / groups</DescriptionListTerm>
+                        <DescriptionListDescription>{[...environment.tags, ...environment.groupings].join(", ") || "None set"}</DescriptionListDescription>
+                      </DescriptionListGroup>
+                    </DescriptionList>
+                  </StackItem>
+                  <StackItem>
+                    <div className="aam-link-cluster">
+                      {endpointLinks.map((item) => (
+                        <Button key={item.label} component="a" href={item.href} target="_blank" rel="noreferrer" variant="secondary" size="sm">
+                          {item.label}
+                        </Button>
+                      ))}
                     </div>
+                  </StackItem>
+                </Stack>
+              </CardBody>
+            </Card>
+          </GridItem>
+          <GridItem lg={6}>
+            <Card isFlat isFullHeight>
+              <CardHeader>
+                <Grid hasGutter style={{ width: "100%" }}>
+                  <GridItem md={8}>
+                    <Stack>
+                      <StackItem>
+                        <Title headingLevel="h2" size="lg">
+                          Recent activity stream
+                        </Title>
+                      </StackItem>
+                      <StackItem>
+                        <Text component="p" className="aam-muted">
+                          Sync runs and remote actions scoped to this environment.
+                        </Text>
+                      </StackItem>
+                    </Stack>
+                  </GridItem>
+                  <GridItem md={4} style={{ textAlign: "right" }}>
+                    <LinkButton to="/activity" variant="secondary">
+                      View fleet activity
+                    </LinkButton>
+                  </GridItem>
+                </Grid>
+              </CardHeader>
+              <CardBody>
+                {activity.length === 0 ? (
+                  <EmptyState
+                    title="No activity yet"
+                    description="Queue a sync or run an action against a collected resource to populate the stream."
+                    action={
+                      <Button type="button" variant="primary" onClick={handleSync}>
+                        Queue sync
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <ActivityTable items={activity.slice(0, 8)} showEnvironment={false} />
+                )}
+              </CardBody>
+            </Card>
+          </GridItem>
+        </Grid>
+      </StackItem>
+
+      <StackItem>
+        <EnvironmentForm
+          mode="edit"
+          initialValue={environment}
+          title="Connection and registration settings"
+          description="Update endpoint locations, authentication, labels, and service behavior for this managed environment."
+          submitLabel="Save changes"
+          busy={busy}
+          errorMessage={error}
+          onSubmit={handleSave}
+        />
+      </StackItem>
+
+      <StackItem>
+        <Grid hasGutter>
+          <GridItem lg={6}>
+            <Card isFlat isFullHeight>
+              <CardHeader>
+                <Stack>
+                  <StackItem>
+                    <Title headingLevel="h2" size="lg">
+                      Platform integration profile
+                    </Title>
+                  </StackItem>
+                  <StackItem>
+                    <Text component="p" className="aam-muted">
+                      Lifecycle, runtime, portal, and trust capabilities mapped from the broader Ansible platform ecosystem.
+                    </Text>
+                  </StackItem>
+                </Stack>
+              </CardHeader>
+              <CardBody>
+                <DescriptionList isCompact isHorizontal columnModifier={{ default: "1Col" }}>
+                  {capabilitySummary.map((item) => (
+                    <DescriptionListGroup key={item.label}>
+                      <DescriptionListTerm>{item.label}</DescriptionListTerm>
+                      <DescriptionListDescription>{item.value}</DescriptionListDescription>
+                    </DescriptionListGroup>
                   ))}
-                </dl>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+                </DescriptionList>
+              </CardBody>
+            </Card>
+          </GridItem>
+          <GridItem lg={6}>
+            <Card isFlat isFullHeight>
+              <CardHeader>
+                <Stack>
+                  <StackItem>
+                    <Title headingLevel="h2" size="lg">
+                      Additional capability flags
+                    </Title>
+                  </StackItem>
+                  <StackItem>
+                    <Text component="p" className="aam-muted">
+                      Any extra capability settings that do not yet map to the structured profile.
+                    </Text>
+                  </StackItem>
+                </Stack>
+              </CardHeader>
+              <CardBody>
+                {Object.keys(extraCapabilities).length === 0 ? (
+                  <EmptyState
+                    title="No additional capability flags"
+                    description="All current capability settings are represented by the structured integration profile."
+                  />
+                ) : (
+                  <CodeBlock className="aam-code-block">
+                    <CodeBlockCode>{JSON.stringify(extraCapabilities, null, 2)}</CodeBlockCode>
+                  </CodeBlock>
+                )}
+              </CardBody>
+            </Card>
+          </GridItem>
+        </Grid>
+      </StackItem>
 
-      <section className="card">
-        <div className="card__header">
-          <div>
-            <h3>Tracked inventory</h3>
-            <p>Controller, EDA, and automation hub resources with the direct actions that map to upstream AAP workflows.</p>
-          </div>
-        </div>
+      <StackItem>
+        <Card isFlat>
+          <CardHeader>
+            <Grid hasGutter style={{ width: "100%" }}>
+              <GridItem md={8}>
+                <Stack>
+                  <StackItem>
+                    <Title headingLevel="h2" size="lg">
+                      Service posture
+                    </Title>
+                  </StackItem>
+                  <StackItem>
+                    <Text component="p" className="aam-muted">
+                      Collected health summaries for each registered AAP component.
+                    </Text>
+                  </StackItem>
+                </Stack>
+              </GridItem>
+              <GridItem md={4} style={{ textAlign: "right" }}>
+                <LinkButton to="/topology" variant="secondary">
+                  View topology
+                </LinkButton>
+              </GridItem>
+            </Grid>
+          </CardHeader>
 
-        {environment.resources.length === 0 ? (
-          <EmptyState title="No inventory collected yet" description="Queue a sync after the endpoints and credentials are valid to populate managed resources." />
-        ) : (
-          <>
-            <div className="toolbar toolbar--form toolbar--filters">
-              <input value={query} onChange={(event) => setQuery(event.target.value)} className="text-input text-input--search" placeholder="Filter resources by name, ID, type, service, or namespace" />
-              <select value={serviceFilter} onChange={(event) => setServiceFilter(event.target.value)} className="select-input select-input--compact">
-                <option value="all">All services</option>
-                {services.map((service) => (
-                  <option key={service} value={service}>
-                    {service}
-                  </option>
-                ))}
-              </select>
-              <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="select-input select-input--compact">
-                <option value="all">All resource types</option>
-                {resourceTypes.map((resourceType) => (
-                  <option key={resourceType} value={resourceType}>
-                    {resourceType.replaceAll("_", " ")}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {filteredResources.length === 0 ? (
-              <EmptyState title="No resources match the current filters" description="Broaden the search, choose a different service, or queue a fresh sync." />
+          <CardBody>
+            {environment.snapshots.length === 0 ? (
+              <EmptyState
+                title="No service data collected yet"
+                description="After the first sync, health, counts, and component-specific posture details will appear here."
+              />
             ) : (
-              <div className="table-shell">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Service</th>
-                      <th>Type</th>
-                      <th>Status</th>
-                      <th>Last seen</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredResources.map((resource) => {
-                      const action = buildResourceAction(resource);
-                      const busyAction = action ? `${resource.id}:${action.action}` === actioningId : false;
-                      return (
-                        <tr key={resource.id}>
-                          <td>
-                            <div className="table-primary">
-                              <span>{resource.name}</span>
-                              <span>{[resource.namespace, resource.external_id].filter(Boolean).join(" · ")}</span>
-                            </div>
-                          </td>
-                          <td>{resource.service}</td>
-                          <td>{resource.resource_type.replaceAll("_", " ")}</td>
-                          <td>
-                            <StatusPill status={resource.status} />
-                          </td>
-                          <td>{new Date(resource.last_seen_at).toLocaleString()}</td>
-                          <td>
-                            {action ? (
-                              <button className="secondary-button secondary-button--small" type="button" disabled={busyAction} onClick={() => handleResourceAction(resource, action)}>
-                                {busyAction ? "Working..." : action.label}
-                              </button>
-                            ) : (
-                              <span className="table-muted">No direct action</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <Gallery hasGutter minWidths={{ default: "280px" }}>
+                {environment.snapshots.map((snapshot) => (
+                  <Card key={snapshot.service} isFlat isCompact>
+                    <CardHeader>
+                      <Grid hasGutter style={{ width: "100%" }}>
+                        <GridItem md={8}>
+                          <Title headingLevel="h3" size="md">
+                            {snapshot.service.toUpperCase()}
+                          </Title>
+                        </GridItem>
+                        <GridItem md={4} style={{ textAlign: "right" }}>
+                          <StatusPill status={snapshot.health} />
+                        </GridItem>
+                      </Grid>
+                    </CardHeader>
+                    <CardBody>
+                      <DescriptionList isCompact columnModifier={{ default: "1Col" }}>
+                        {Object.entries(snapshot.summary).map(([key, value]) => (
+                          <DescriptionListGroup key={key}>
+                            <DescriptionListTerm>{humanize(key)}</DescriptionListTerm>
+                            <DescriptionListDescription>{stringifyValue(value)}</DescriptionListDescription>
+                          </DescriptionListGroup>
+                        ))}
+                      </DescriptionList>
+                    </CardBody>
+                  </Card>
+                ))}
+              </Gallery>
             )}
-          </>
-        )}
-      </section>
-    </div>
+          </CardBody>
+        </Card>
+      </StackItem>
+
+      <StackItem>
+        <Card isFlat>
+          <CardHeader>
+            <Stack hasGutter>
+              <StackItem>
+                <Title headingLevel="h2" size="lg">
+                  Tracked inventory
+                </Title>
+              </StackItem>
+              <StackItem>
+                <Text component="p" className="aam-muted">
+                  Controller, EDA, and automation hub resources with the direct actions that map to upstream AAP workflows.
+                </Text>
+              </StackItem>
+            </Stack>
+          </CardHeader>
+
+          <CardBody>
+            {environment.resources.length === 0 ? (
+              <EmptyState
+                title="No inventory collected yet"
+                description="Queue a sync after the endpoints and credentials are valid to populate managed resources."
+              />
+            ) : (
+              <Stack hasGutter>
+                <StackItem>
+                  <Grid hasGutter>
+                    <GridItem lg={6}>
+                      <SearchInput
+                        value={query}
+                        onChange={(_, value) => setQuery(value)}
+                        onClear={() => setQuery("")}
+                        aria-label="Filter resources"
+                        placeholder="Filter resources by name, ID, type, service, or namespace"
+                      />
+                    </GridItem>
+                    <GridItem lg={3}>
+                      <FormSelect value={serviceFilter} onChange={(_, value) => setServiceFilter(value)} aria-label="Filter by service">
+                        <FormSelectOption value="all" label="All services" />
+                        {services.map((service) => (
+                          <FormSelectOption key={service} value={service} label={service} />
+                        ))}
+                      </FormSelect>
+                    </GridItem>
+                    <GridItem lg={3}>
+                      <FormSelect value={typeFilter} onChange={(_, value) => setTypeFilter(value)} aria-label="Filter by resource type">
+                        <FormSelectOption value="all" label="All resource types" />
+                        {resourceTypes.map((resourceType) => (
+                          <FormSelectOption key={resourceType} value={resourceType} label={humanize(resourceType)} />
+                        ))}
+                      </FormSelect>
+                    </GridItem>
+                  </Grid>
+                </StackItem>
+
+                {filteredResources.length === 0 ? (
+                  <StackItem>
+                    <EmptyState
+                      title="No resources match the current filters"
+                      description="Broaden the search, choose a different service, or queue a fresh sync."
+                    />
+                  </StackItem>
+                ) : (
+                  filteredResources.map((resource) => {
+                    const action = buildResourceAction(resource);
+                    const busyAction = action ? `${resource.id}:${action.action}` === actioningId : false;
+
+                    return (
+                      <StackItem key={resource.id}>
+                        <Card isFlat isCompact>
+                          <CardBody>
+                            <Grid hasGutter>
+                              <GridItem lg={4}>
+                                <Title headingLevel="h3" size="md">
+                                  {resource.name}
+                                </Title>
+                                <Text component="small" className="aam-muted">
+                                  {[resource.namespace, resource.external_id].filter(Boolean).join(" · ")}
+                                </Text>
+                              </GridItem>
+                              <GridItem lg={2}>
+                                <Text component="small" className="aam-muted">
+                                  Service
+                                </Text>
+                                <div>{resource.service}</div>
+                              </GridItem>
+                              <GridItem lg={2}>
+                                <Text component="small" className="aam-muted">
+                                  Type
+                                </Text>
+                                <div>{humanize(resource.resource_type)}</div>
+                              </GridItem>
+                              <GridItem lg={2}>
+                                <Text component="small" className="aam-muted">
+                                  Status
+                                </Text>
+                                <div>
+                                  <StatusPill status={resource.status} />
+                                </div>
+                              </GridItem>
+                              <GridItem lg={2}>
+                                <Text component="small" className="aam-muted">
+                                  Last seen
+                                </Text>
+                                <div>{formatDateTime(resource.last_seen_at)}</div>
+                              </GridItem>
+                              <GridItem span={12}>
+                                {action ? (
+                                  <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    isLoading={busyAction}
+                                    isDisabled={busyAction}
+                                    onClick={() => handleResourceAction(resource, action)}
+                                  >
+                                    {busyAction ? "Working..." : action.label}
+                                  </Button>
+                                ) : (
+                                  <Text component="small" className="aam-muted">
+                                    No direct action for this resource type.
+                                  </Text>
+                                )}
+                              </GridItem>
+                            </Grid>
+                          </CardBody>
+                        </Card>
+                      </StackItem>
+                    );
+                  })
+                )}
+              </Stack>
+            )}
+          </CardBody>
+        </Card>
+      </StackItem>
+    </Stack>
   );
 }

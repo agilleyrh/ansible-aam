@@ -1,10 +1,35 @@
 import { useEffect, useState } from "react";
+
+import {
+  Alert,
+  Bullseye,
+  Card,
+  CardBody,
+  CardHeader,
+  DescriptionList,
+  DescriptionListDescription,
+  DescriptionListGroup,
+  DescriptionListTerm,
+  ExpandableSection,
+  FormSelect,
+  FormSelectOption,
+  Grid,
+  GridItem,
+  Label,
+  Stack,
+  StackItem,
+  Text,
+  Title,
+} from "@patternfly/react-core";
 import { Link } from "react-router-dom";
 
 import { api } from "../api";
 import { EmptyState } from "../components/empty-state";
+import { LinkButton } from "../components/link-button";
+import { PageHeader } from "../components/page-header";
 import { StatusPill } from "../components/status-pill";
 import type { EnvironmentSummary, TopologyEdge, TopologyNode, TopologyResponse } from "../types";
+import { stringifyValue } from "../utils";
 
 type TreeNode = TopologyNode & { children: TreeNode[] };
 
@@ -24,35 +49,51 @@ function buildTree(nodes: TopologyNode[], edges: TopologyEdge[]): TreeNode[] {
     }
   }
 
-  return nodes.filter((n) => !childIds.has(n.id)).map((n) => nodeMap.get(n.id)!);
+  return nodes.filter((node) => !childIds.has(node.id)).map((node) => nodeMap.get(node.id)!);
 }
 
-function TopologyNodeCard({ node, depth }: { node: TreeNode; depth: number }) {
+function TopologyNodeCard({ node }: { node: TreeNode }) {
   return (
-    <div className="topology-tree-item" style={{ marginLeft: `${depth * 1.5}rem` }}>
-      <article className={`topology-node topology-node--${node.kind}`}>
-        <div className="topology-node__header">
-          <strong>{node.label}</strong>
-          <StatusPill status={node.status} />
-        </div>
-        <p>{node.kind}</p>
-        {Object.keys(node.metadata).length > 0 ? (
-          <dl className="topology-node__meta">
-            {Object.entries(node.metadata)
-              .slice(0, 3)
-              .map(([key, value]) => (
-                <div key={key}>
-                  <dt>{key.replaceAll("_", " ")}</dt>
-                  <dd>{typeof value === "object" ? JSON.stringify(value) : String(value)}</dd>
-                </div>
-              ))}
-          </dl>
-        ) : null}
-      </article>
+    <div className="aam-topology-tree">
+      <Card className="aam-topology-node" data-kind={node.kind} isFlat>
+        <CardHeader>
+          <Grid hasGutter style={{ width: "100%" }}>
+            <GridItem md={8}>
+              <Title headingLevel="h3" size="md">
+                {node.label}
+              </Title>
+              <Text component="small" className="aam-muted">
+                {node.kind}
+              </Text>
+            </GridItem>
+            <GridItem md={4} style={{ textAlign: "right" }}>
+              <StatusPill status={node.status} />
+            </GridItem>
+          </Grid>
+        </CardHeader>
+        <CardBody>
+          {Object.keys(node.metadata).length > 0 ? (
+            <DescriptionList isCompact isHorizontal columnModifier={{ default: "1Col" }}>
+              {Object.entries(node.metadata)
+                .slice(0, 3)
+                .map(([key, value]) => (
+                  <DescriptionListGroup key={key}>
+                    <DescriptionListTerm>{key.replaceAll("_", " ")}</DescriptionListTerm>
+                    <DescriptionListDescription>{stringifyValue(value)}</DescriptionListDescription>
+                  </DescriptionListGroup>
+                ))}
+            </DescriptionList>
+          ) : (
+            <Text component="small" className="aam-muted">
+              No additional metadata declared.
+            </Text>
+          )}
+        </CardBody>
+      </Card>
       {node.children.length > 0 ? (
-        <div className="topology-tree-children">
+        <div className="aam-topology-children">
           {node.children.map((child) => (
-            <TopologyNodeCard key={child.id} node={child} depth={depth + 1} />
+            <TopologyNodeCard key={child.id} node={child} />
           ))}
         </div>
       ) : null}
@@ -61,32 +102,29 @@ function TopologyNodeCard({ node, depth }: { node: TreeNode; depth: number }) {
 }
 
 function TopologyEdgeList({ edges, nodes }: { edges: TopologyEdge[]; nodes: TopologyNode[] }) {
-  const nodeLabels = new Map(nodes.map((n) => [n.id, n.label]));
-  if (edges.length === 0) return null;
+  const nodeLabels = new Map(nodes.map((node) => [node.id, node.label]));
+  if (edges.length === 0) {
+    return null;
+  }
+
   return (
-    <details className="topology-edges-details">
-      <summary>{edges.length} relationship{edges.length !== 1 ? "s" : ""}</summary>
-      <div className="table-shell">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Source</th>
-              <th>Relationship</th>
-              <th>Target</th>
-            </tr>
-          </thead>
-          <tbody>
-            {edges.map((edge, i) => (
-              <tr key={i}>
-                <td>{nodeLabels.get(edge.source) ?? edge.source}</td>
-                <td><span className="topology-edge-label">{edge.relationship}</span></td>
-                <td>{nodeLabels.get(edge.target) ?? edge.target}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </details>
+    <ExpandableSection toggleText={`${edges.length} relationship${edges.length !== 1 ? "s" : ""}`}>
+      <Stack hasGutter>
+        {edges.map((edge, index) => (
+          <Card key={`${edge.source}-${edge.target}-${index}`} isFlat isCompact>
+            <CardBody>
+              <Grid hasGutter>
+                <GridItem md={5}>{nodeLabels.get(edge.source) ?? edge.source}</GridItem>
+                <GridItem md={2}>
+                  <Label color="blue">{edge.relationship}</Label>
+                </GridItem>
+                <GridItem md={5}>{nodeLabels.get(edge.target) ?? edge.target}</GridItem>
+              </Grid>
+            </CardBody>
+          </Card>
+        ))}
+      </Stack>
+    </ExpandableSection>
   );
 }
 
@@ -120,71 +158,111 @@ export function TopologyPage() {
     api
       .topology(selected, controller.signal)
       .then(setTopology)
-      .catch((err: Error) => { if (!controller.signal.aborted) setError(err.message); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .catch((err: Error) => {
+        if (!controller.signal.aborted) {
+          setError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      });
     return () => controller.abort();
   }, [selected]);
 
   if (error && !topology) {
-    return <section className="card">Topology unavailable: {error}</section>;
+    return <Alert isInline variant="danger" title={`Topology unavailable: ${error}`} />;
   }
 
   const tree = topology ? buildTree(topology.nodes, topology.edges) : [];
 
   return (
-    <div className="page-stack">
-      <section className="page-header">
-        <div>
-          <p className="eyebrow">Topology</p>
-          <h2>Service and resource relationships</h2>
-          <p className="page-header__description">Follow how each environment expands into services, collected resources, and declared platform integrations such as operators, Terraform, receptor, Backstage, and MCP.</p>
-        </div>
-        {environments.length > 0 ? (
-          <select value={selected} onChange={(event) => setSelected(event.target.value)} className="select-input select-input--compact">
-            {environments.map((environment) => (
-              <option key={environment.id} value={environment.id}>
-                {environment.name}
-              </option>
-            ))}
-          </select>
-        ) : null}
-      </section>
-
-      {environments.length === 0 ? (
-        <EmptyState
-          title="No topology available yet"
-          description="Register and sync at least one AAP environment to populate service and resource relationships."
-          action={
-            <Link className="primary-button" to="/environments">
-              Register first environment
-            </Link>
+    <Stack hasGutter>
+      <StackItem>
+        <PageHeader
+          section="Topology"
+          title="Service and resource relationships"
+          description="Follow how each environment expands into services, collected resources, and declared platform integrations such as operators, Terraform, receptor, Backstage, and MCP."
+          actions={
+            environments.length > 0 ? (
+              <FormSelect value={selected} onChange={(_, value) => setSelected(value)} aria-label="Select environment topology">
+                {environments.map((environment) => (
+                  <FormSelectOption key={environment.id} value={environment.id} label={environment.name} />
+                ))}
+              </FormSelect>
+            ) : undefined
           }
         />
+      </StackItem>
+
+      {environments.length === 0 ? (
+        <StackItem>
+          <Card isFlat>
+            <CardBody>
+              <EmptyState
+                title="No topology available yet"
+                description="Register and sync at least one AAP environment to populate service and resource relationships."
+                action={
+                  <LinkButton to="/environments" variant="primary">
+                    Register first environment
+                  </LinkButton>
+                }
+              />
+            </CardBody>
+          </Card>
+        </StackItem>
       ) : loading ? (
-        <section className="card"><p style={{ color: "var(--pf-text-muted)" }}>Loading topology...</p></section>
+        <StackItem>
+          <Bullseye>
+            <Card isFlat>
+              <CardBody>Loading topology...</CardBody>
+            </Card>
+          </Bullseye>
+        </StackItem>
       ) : topology && topology.nodes.length === 0 ? (
-        <section className="card">
-          <EmptyState title="No topology data" description="Queue a sync for this environment to populate the topology graph." />
-        </section>
+        <StackItem>
+          <Card isFlat>
+            <CardBody>
+              <EmptyState title="No topology data" description="Queue a sync for this environment to populate the topology graph." />
+            </CardBody>
+          </Card>
+        </StackItem>
       ) : (
-        <section className="card">
-          <div className="topology-tree">
-            {tree.map((root) => (
-              <TopologyNodeCard key={root.id} node={root} depth={0} />
-            ))}
-          </div>
-
-          {topology ? (
-            <TopologyEdgeList edges={topology.edges} nodes={topology.nodes} />
-          ) : null}
-
-          {selected ? (
-            <p className="footnote">
-              Need the full configuration context? Open <Link to={`/environments/${selected}`}>the environment detail page</Link>.
-            </p>
-          ) : null}
-        </section>
+        <StackItem>
+          <Card isFlat>
+            <CardHeader>
+              <Stack>
+                <StackItem>
+                  <Title headingLevel="h2" size="lg">
+                    Environment topology
+                  </Title>
+                </StackItem>
+                <StackItem>
+                  <Text component="p" className="aam-muted">
+                    Nodes show the discovered and declared control-plane relationships for the selected environment.
+                  </Text>
+                </StackItem>
+              </Stack>
+            </CardHeader>
+            <CardBody>
+              <Stack hasGutter>
+                {tree.map((root) => (
+                  <StackItem key={root.id}>
+                    <TopologyNodeCard node={root} />
+                  </StackItem>
+                ))}
+                {topology ? <TopologyEdgeList edges={topology.edges} nodes={topology.nodes} /> : null}
+                {selected ? (
+                  <Text component="small" className="aam-muted">
+                    Need the full configuration context? Open <Link to={`/environments/${selected}`}>the environment detail page</Link>.
+                  </Text>
+                ) : null}
+              </Stack>
+            </CardBody>
+          </Card>
+        </StackItem>
       )}
-    </div>
+    </Stack>
   );
 }

@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+
+import { Alert, Bullseye, Card, CardBody, CardHeader, FormSelect, FormSelectOption, Gallery, Stack, StackItem, Text, Title } from "@patternfly/react-core";
 
 import { api } from "../api";
 import { ActivityTable } from "../components/activity-table";
 import { EmptyState } from "../components/empty-state";
+import { LinkButton } from "../components/link-button";
+import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
 import type { ActivityEvent, EnvironmentSummary } from "../types";
 
@@ -30,17 +33,31 @@ export function ActivityPage() {
           setError(null);
         }
       })
-      .catch((err: Error) => { if (!controller.signal.aborted) setError(err.message); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .catch((err: Error) => {
+        if (!controller.signal.aborted) {
+          setError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      });
     return () => controller.abort();
   }, [selectedEnvironmentId]);
 
   if (loading && items.length === 0) {
-    return <section className="card">Loading activity stream...</section>;
+    return (
+      <Bullseye>
+        <Card isFlat>
+          <CardBody>Loading activity stream...</CardBody>
+        </Card>
+      </Bullseye>
+    );
   }
 
   if (error && items.length === 0) {
-    return <section className="card">Activity stream unavailable: {error}</section>;
+    return <Alert isInline variant="danger" title={`Activity stream unavailable: ${error}`} />;
   }
 
   const syncCount = items.filter((item) => item.kind === "sync").length;
@@ -49,50 +66,73 @@ export function ActivityPage() {
   const activeCount = items.filter((item) => item.status === "queued" || item.status === "running").length;
 
   return (
-    <div className="page-stack">
-      <section className="page-header">
-        <div>
-          <p className="eyebrow">Activity</p>
-          <h2>Fleet activity stream</h2>
-          <p className="page-header__description">Review syncs, remote launches, repository syncs, and activation changes across the managed automation estate.</p>
-        </div>
-        <div className="page-header__actions">
-          <Link className="secondary-button" to="/environments">
-            Open environment registry
-          </Link>
-          <select value={selectedEnvironmentId} onChange={(event) => setSelectedEnvironmentId(event.target.value)} className="select-input select-input--compact">
-            <option value="all">All environments</option>
-            {environments.map((environment) => (
-              <option key={environment.id} value={environment.id}>
-                {environment.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </section>
+    <Stack hasGutter>
+      <StackItem>
+        <PageHeader
+          section="Activity"
+          title="Fleet activity stream"
+          description="Review syncs, remote launches, repository syncs, and activation changes across the managed automation estate."
+          actions={
+            <>
+              <LinkButton to="/environments" variant="secondary">
+                Open environment registry
+              </LinkButton>
+              <FormSelect value={selectedEnvironmentId} onChange={(_, value) => setSelectedEnvironmentId(value)} aria-label="Filter activity by environment">
+                <FormSelectOption value="all" label="All environments" />
+                {environments.map((environment) => (
+                  <FormSelectOption key={environment.id} value={environment.id} label={environment.name} />
+                ))}
+              </FormSelect>
+            </>
+          }
+        />
+      </StackItem>
 
-      <section className="card-grid card-grid--four">
-        <StatCard label="Events" value={items.length} detail="Latest stream entries loaded" />
-        <StatCard label="Sync jobs" value={syncCount} detail="Collection and policy evaluation runs" />
-        <StatCard label="Remote actions" value={actionCount} detail="Operator-initiated actions on managed services" />
-        <StatCard label="Needs attention" value={failedCount + activeCount} detail="Failed, queued, or running events" />
-      </section>
+      {error && items.length > 0 ? (
+        <StackItem>
+          <Alert isInline variant="warning" title={`Refresh issue: ${error}`} />
+        </StackItem>
+      ) : null}
 
-      <section className="card">
-        <div className="card__header">
-          <div>
-            <h3>Recent activity</h3>
-            <p>Ordered newest first and aligned to the activity-stream pattern used across controller and AAP.</p>
-          </div>
-        </div>
-        {loading && items.length > 0 ? (
-          <div className="inline-alert">Refreshing activity stream...</div>
-        ) : items.length === 0 ? (
-          <EmptyState title="No activity yet" description="Register an environment, queue a sync, or run a remote action to start populating the stream." />
-        ) : (
-          <ActivityTable items={items} showEnvironment={selectedEnvironmentId === "all"} />
-        )}
-      </section>
-    </div>
+      <StackItem>
+        <Gallery hasGutter minWidths={{ default: "180px", lg: "220px" }}>
+          <StatCard label="Events" value={items.length} detail="Latest stream entries loaded" />
+          <StatCard label="Sync jobs" value={syncCount} detail="Collection and policy evaluation runs" />
+          <StatCard label="Remote actions" value={actionCount} detail="Operator-initiated actions on managed services" />
+          <StatCard label="Needs attention" value={failedCount + activeCount} detail="Failed, queued, or running events" />
+        </Gallery>
+      </StackItem>
+
+      <StackItem>
+        <Card isFlat>
+          <CardHeader>
+            <Stack>
+              <StackItem>
+                <Title headingLevel="h2" size="lg">
+                  Recent activity
+                </Title>
+              </StackItem>
+              <StackItem>
+                <Text component="p" className="aam-muted">
+                  Ordered newest first and aligned to the activity-stream pattern used across controller and AAP.
+                </Text>
+              </StackItem>
+            </Stack>
+          </CardHeader>
+          <CardBody>
+            {loading && items.length > 0 ? (
+              <Alert isInline variant="info" title="Refreshing activity stream..." />
+            ) : items.length === 0 ? (
+              <EmptyState
+                title="No activity yet"
+                description="Register an environment, queue a sync, or run a remote action to start populating the stream."
+              />
+            ) : (
+              <ActivityTable items={items} showEnvironment={selectedEnvironmentId === "all"} />
+            )}
+          </CardBody>
+        </Card>
+      </StackItem>
+    </Stack>
   );
 }

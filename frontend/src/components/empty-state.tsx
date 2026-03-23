@@ -1,22 +1,33 @@
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
+
+import {
+  EmptyState as PatternFlyEmptyState,
+  EmptyStateActions,
+  EmptyStateBody,
+  EmptyStateFooter,
+  EmptyStateHeader,
+  EmptyStateIcon,
+} from "@patternfly/react-core";
+import { CubesIcon } from "@patternfly/react-icons";
 
 type Props = {
   title: string;
   description: string;
   action?: ReactNode;
+  icon?: ComponentType<any>;
+  variant?: "xs" | "sm" | "lg" | "xl" | "full";
 };
 
-export function EmptyState({ title, description, action }: Props) {
+export function EmptyState({ title, description, action, icon = CubesIcon, variant = "lg" }: Props) {
   return (
-    <section className="empty-state">
-      <div className="empty-state__icon" aria-hidden="true">
-        +
-      </div>
-      <div className="empty-state__content">
-        <h3>{title}</h3>
-        <p>{description}</p>
-        {action ? <div className="empty-state__action">{action}</div> : null}
-      </div>
-    </section>
+    <PatternFlyEmptyState variant={variant}>
+      <EmptyStateHeader titleText={title} headingLevel="h3" icon={<EmptyStateIcon icon={icon} />} />
+      <EmptyStateBody>{description}</EmptyStateBody>
+      {action ? (
+        <EmptyStateFooter>
+          <EmptyStateActions>{action}</EmptyStateActions>
+        </EmptyStateFooter>
+      ) : null}
+    </PatternFlyEmptyState>
   );
 }
