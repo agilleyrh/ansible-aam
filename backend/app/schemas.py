@@ -166,6 +166,21 @@ class DashboardResponse(BaseModel):
     environment_summaries: list[EnvironmentSummary]
 
 
+class MonitoringEnvironmentResponse(EnvironmentSummary):
+    model_config = ConfigDict(from_attributes=True)
+
+    auth_mode: str
+    verify_ssl: bool
+    sync_interval_minutes: int
+    capabilities: dict[str, Any] = Field(default_factory=dict)
+    snapshots: list[ServiceSnapshotResponse] = Field(default_factory=list)
+
+
+class MonitoringResponse(BaseModel):
+    environment_count: int
+    environments: list[MonitoringEnvironmentResponse] = Field(default_factory=list)
+
+
 class SyncExecutionResponse(BaseModel):
     id: str
     environment_id: str

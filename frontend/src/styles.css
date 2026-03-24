@@ -155,6 +155,11 @@ a {
   margin: var(--pf-v5-global--spacer--xs) 0 0;
 }
 
+.aam-form-expandable,
+.aam-tab-panel {
+  padding-top: var(--pf-v5-global--spacer--md);
+}
+
 .aam-code-field {
   font-family: var(--pf-v5-global--FontFamily--monospace);
 }

@@ -6,7 +6,6 @@ import {
   Card,
   CardBody,
   CardHeader,
-  Flex,
   Gallery,
   Grid,
   GridItem,
@@ -16,17 +15,16 @@ import {
   Text,
   Title,
 } from "@patternfly/react-core";
-import { Link } from "react-router-dom";
 
 import { api } from "../api";
 import { ActivityTable } from "../components/activity-table";
 import { EmptyState } from "../components/empty-state";
 import { LinkButton } from "../components/link-button";
+import { MetricBarChart } from "../components/metric-bar-chart";
 import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
-import { StatusPill } from "../components/status-pill";
 import type { ActivityEvent, DashboardResponse } from "../types";
-import { formatDateTime, humanize } from "../utils";
+import { humanize } from "../utils";
 
 function getProgressVariant(name: string): "danger" | "success" | "warning" | undefined {
   const normalized = name.toLowerCase();
@@ -103,10 +101,24 @@ export function DashboardPage() {
   const hasEnvironments = data.environment_count > 0;
   const topResources = Object.entries(data.resource_breakdown)
     .sort((left, right) => right[1] - left[1])
-    .slice(0, 6);
+    .slice(0, 8);
   const topIntegrations = Object.entries(data.integration_breakdown)
     .sort((left, right) => right[1] - left[1])
     .slice(0, 6);
+  const healthScores = data.environment_summaries.map((environment) => {
+    const score =
+      typeof environment.summary.health_score === "number"
+        ? environment.summary.health_score
+        : Number.parseInt(String(environment.summary.health_score ?? 0), 10) || 0;
+
+    return {
+      label: environment.name,
+      value: score,
+      total: 100,
+      valueText: `${score} of 100`,
+      variant: score >= 85 ? ("success" as const) : score >= 60 ? ("warning" as const) : ("danger" as const),
+    };
+  });
 
   return (
     <Stack hasGutter>
@@ -114,11 +126,11 @@ export function DashboardPage() {
         <PageHeader
           section="Overview"
           title="Multi-environment automation operations"
-          description="Track health, compliance, and component posture across every registered AAP environment from one console."
+          description="Use the overview for high-level fleet status, then move into monitoring, environment settings, and activity for operational work."
           actions={
             <>
-              <LinkButton to="/settings" variant="secondary">
-                View runtime settings
+              <LinkButton to="/monitoring" variant="secondary">
+                View monitoring
               </LinkButton>
               <LinkButton to="/environments" variant="primary">
                 Open environment registry
@@ -149,7 +161,7 @@ export function DashboardPage() {
             <CardBody>
               <EmptyState
                 title="No AAP environments registered"
-                description="Register your first controller, gateway, EDA, or automation hub endpoint to populate dashboard health, topology, and governance data."
+                description="Register your first controller, gateway, EDA, or automation hub endpoint to populate dashboard health, monitoring posture, topology, and governance data."
                 action={
                   <LinkButton to="/environments" variant="primary">
                     Register first environment
@@ -208,33 +220,30 @@ export function DashboardPage() {
                       </StackItem>
                       <StackItem>
                         <Text component="p" className="aam-muted">
-                          Component readiness by service type.
+                          Component readiness by service type. Open the monitoring view for the full cross-environment breakdown.
                         </Text>
                       </StackItem>
                     </Stack>
                   </CardHeader>
                   <CardBody>
-                    <Gallery hasGutter minWidths={{ default: "220px" }}>
+                    <Stack hasGutter>
                       {Object.entries(data.services).map(([service, counts]) => (
-                        <Card key={service} isFlat isCompact>
-                          <CardHeader>
-                            <Title headingLevel="h3" size="md">
-                              {service.toUpperCase()}
-                            </Title>
-                          </CardHeader>
-                          <CardBody>
-                            <Flex gap={{ default: "gapSm" }} flexWrap={{ default: "wrap" }}>
-                              {Object.entries(counts).map(([status, value]) => (
-                                <Flex key={status} gap={{ default: "gapXs" }} alignItems={{ default: "alignItemsCenter" }}>
-                                  <StatusPill status={status} />
-                                  <Text component="small">{value}</Text>
-                                </Flex>
-                              ))}
-                            </Flex>
-                          </CardBody>
-                        </Card>
+                        <StackItem key={service}>
+                          <Title headingLevel="h3" size="md">
+                            {service.toUpperCase()}
+                          </Title>
+                          <MetricBarChart
+                            items={Object.entries(counts).map(([status, value]) => ({
+                              label: humanize(status),
+                              value,
+                              total: Object.values(counts).reduce((total, count) => total + count, 0) || 1,
+                              valueText: `${value} environments`,
+                              variant: getProgressVariant(status),
+                            }))}
+                          />
+                        </StackItem>
                       ))}
-                    </Gallery>
+                    </Stack>
                   </CardBody>
                 </Card>
               </GridItem>
@@ -246,103 +255,55 @@ export function DashboardPage() {
               <GridItem lg={6}>
                 <Card isFlat isFullHeight>
                   <CardHeader>
-                    <Flex
-                      justifyContent={{ default: "justifyContentSpaceBetween" }}
-                      alignItems={{ default: "alignItemsFlexStart" }}
-                      flexWrap={{ default: "wrap" }}
-                      gap={{ default: "gapSm" }}
-                      style={{ width: "100%" }}
-                    >
-                      <Stack>
-                        <StackItem>
-                          <Title headingLevel="h2" size="lg">
-                            Automation estate coverage
-                          </Title>
-                        </StackItem>
-                        <StackItem>
-                          <Text component="p" className="aam-muted">
-                            Resource types discovered from controller, EDA, and automation hub integrations.
-                          </Text>
-                        </StackItem>
-                      </Stack>
-                      <LinkButton to="/search" variant="link" isInline>
-                        Search inventory
-                      </LinkButton>
-                    </Flex>
+                    <Stack>
+                      <StackItem>
+                        <Title headingLevel="h2" size="lg">
+                          Environment health scores
+                        </Title>
+                      </StackItem>
+                      <StackItem>
+                        <Text component="p" className="aam-muted">
+                          Use this as a quick view of which environments need deeper investigation in the monitoring page.
+                        </Text>
+                      </StackItem>
+                    </Stack>
                   </CardHeader>
                   <CardBody>
-                    {topResources.length === 0 ? (
-                      <EmptyState
-                        title="No inventory collected"
-                        description="Queue a sync to populate templates, projects, activations, repositories, and other tracked resources."
-                      />
-                    ) : (
-                      <Stack hasGutter>
-                        {topResources.map(([resourceType, count]) => (
-                          <StackItem key={resourceType}>
-                            <Progress
-                              title={humanize(resourceType)}
-                              value={Math.min(count * 10, 100)}
-                              measureLocation="outside"
-                              label={String(count)}
-                              valueText={`${count} discovered resources`}
-                              variant="success"
-                            />
-                          </StackItem>
-                        ))}
-                      </Stack>
-                    )}
+                    <MetricBarChart items={healthScores} emptyText="No environment health scores available." />
                   </CardBody>
                 </Card>
               </GridItem>
               <GridItem lg={6}>
                 <Card isFlat isFullHeight>
                   <CardHeader>
-                    <Flex
-                      justifyContent={{ default: "justifyContentSpaceBetween" }}
-                      alignItems={{ default: "alignItemsFlexStart" }}
-                      flexWrap={{ default: "wrap" }}
-                      gap={{ default: "gapSm" }}
-                      style={{ width: "100%" }}
-                    >
-                      <Stack>
-                        <StackItem>
-                          <Title headingLevel="h2" size="lg">
-                            Platform interface adoption
-                          </Title>
-                        </StackItem>
-                        <StackItem>
-                          <Text component="p" className="aam-muted">
-                            Provisioning, runtime, portal, and trust patterns derived from the broader Ansible platform repositories.
-                          </Text>
-                        </StackItem>
-                      </Stack>
-                      <LinkButton to="/environments" variant="link" isInline>
-                        Edit environment interfaces
-                      </LinkButton>
-                    </Flex>
+                    <Stack>
+                      <StackItem>
+                        <Title headingLevel="h2" size="lg">
+                          Collection and interface declarations
+                        </Title>
+                      </StackItem>
+                      <StackItem>
+                        <Text component="p" className="aam-muted">
+                          Declared platform interfaces and integration patterns across the fleet.
+                        </Text>
+                      </StackItem>
+                    </Stack>
                   </CardHeader>
                   <CardBody>
                     {topIntegrations.length === 0 ? (
                       <EmptyState
                         title="No platform interfaces declared"
-                        description="Use the structured registration fields to declare operators, Terraform, runner, receptor, portal, and trust integrations."
+                        description="Use the environment settings view to declare operators, Terraform, runner, receptor, portal, and trust integrations."
                       />
                     ) : (
-                      <Stack hasGutter>
-                        {topIntegrations.map(([integration, count]) => (
-                          <StackItem key={integration}>
-                            <Progress
-                              title={humanize(integration.replace("management:", ""))}
-                              value={Math.min(count * 20, 100)}
-                              measureLocation="outside"
-                              label={String(count)}
-                              valueText={`${count} environments`}
-                              variant="success"
-                            />
-                          </StackItem>
-                        ))}
-                      </Stack>
+                      <MetricBarChart
+                        items={topIntegrations.map(([integration, count]) => ({
+                          label: humanize(integration.replace("management:", "")),
+                          value: count,
+                          valueText: `${count} environments`,
+                          variant: "success",
+                        }))}
+                      />
                     )}
                   </CardBody>
                 </Card>
@@ -351,110 +312,71 @@ export function DashboardPage() {
           </StackItem>
 
           <StackItem>
-            <Card isFlat>
-              <CardHeader>
-                <Flex
-                  justifyContent={{ default: "justifyContentSpaceBetween" }}
-                  alignItems={{ default: "alignItemsFlexStart" }}
-                  flexWrap={{ default: "wrap" }}
-                  gap={{ default: "gapSm" }}
-                  style={{ width: "100%" }}
-                >
-                  <Stack>
-                    <StackItem>
-                      <Title headingLevel="h2" size="lg">
-                        Recent activity
-                      </Title>
-                    </StackItem>
-                    <StackItem>
-                      <Text component="p" className="aam-muted">
-                        Syncs and remote actions aligned to an AAP-style activity stream.
-                      </Text>
-                    </StackItem>
-                  </Stack>
-                  <LinkButton to="/activity" variant="link" isInline>
-                    View activity stream
-                  </LinkButton>
-                </Flex>
-              </CardHeader>
-              <CardBody>
-                {activity.length === 0 ? (
-                  <EmptyState
-                    title="No activity recorded"
-                    description="Register an environment, queue a sync, or launch a managed action to populate the feed."
-                  />
-                ) : (
-                  <ActivityTable items={activity.slice(0, 6)} />
-                )}
-              </CardBody>
-            </Card>
-          </StackItem>
-
-          <StackItem>
-            <Card isFlat>
-              <CardHeader>
-                <Stack>
-                  <StackItem>
-                    <Title headingLevel="h2" size="lg">
-                      Environment registry
-                    </Title>
-                  </StackItem>
-                  <StackItem>
-                    <Text component="p" className="aam-muted">
-                      Operational view of every registered automation footprint.
-                    </Text>
-                  </StackItem>
-                </Stack>
-              </CardHeader>
-              <CardBody>
-                <Stack hasGutter>
-                  {data.environment_summaries.map((environment) => (
-                    <Card key={environment.id} isFlat isCompact>
-                      <CardBody>
-                        <Grid hasGutter>
-                          <GridItem md={4}>
-                            <Link to={`/environments/${environment.id}`}>
-                              <Title headingLevel="h3" size="md">
-                                {environment.name}
-                              </Title>
-                            </Link>
-                            <Text component="small" className="aam-muted">
-                              {environment.groupings.join(", ") || environment.slug}
-                            </Text>
-                          </GridItem>
-                          <GridItem md={2}>
-                            <Text component="small" className="aam-muted">
-                              Status
-                            </Text>
-                            <div>
-                              <StatusPill status={environment.status} />
-                            </div>
-                          </GridItem>
-                          <GridItem md={2}>
-                            <Text component="small" className="aam-muted">
-                              Version
-                            </Text>
-                            <div>{environment.platform_version ?? "Unknown"}</div>
-                          </GridItem>
-                          <GridItem md={2}>
-                            <Text component="small" className="aam-muted">
-                              Health score
-                            </Text>
-                            <div>{String(environment.summary.health_score ?? "n/a")}</div>
-                          </GridItem>
-                          <GridItem md={2}>
-                            <Text component="small" className="aam-muted">
-                              Last sync
-                            </Text>
-                            <div>{formatDateTime(environment.last_synced_at)}</div>
-                          </GridItem>
-                        </Grid>
-                      </CardBody>
-                    </Card>
-                  ))}
-                </Stack>
-              </CardBody>
-            </Card>
+            <Grid hasGutter>
+              <GridItem lg={6}>
+                <Card isFlat isFullHeight>
+                  <CardHeader>
+                    <Stack>
+                      <StackItem>
+                        <Title headingLevel="h2" size="lg">
+                          Automation estate coverage
+                        </Title>
+                      </StackItem>
+                      <StackItem>
+                        <Text component="p" className="aam-muted">
+                          Resource types discovered from controller, EDA, and automation hub integrations.
+                        </Text>
+                      </StackItem>
+                    </Stack>
+                  </CardHeader>
+                  <CardBody>
+                    {topResources.length === 0 ? (
+                      <EmptyState
+                        title="No inventory collected"
+                        description="Queue a sync to populate templates, projects, activations, repositories, and other tracked resources."
+                      />
+                    ) : (
+                      <MetricBarChart
+                        items={topResources.map(([resourceType, count]) => ({
+                          label: humanize(resourceType),
+                          value: count,
+                          valueText: `${count} discovered resources`,
+                          variant: "success",
+                        }))}
+                      />
+                    )}
+                  </CardBody>
+                </Card>
+              </GridItem>
+              <GridItem lg={6}>
+                <Card isFlat isFullHeight>
+                  <CardHeader>
+                    <Stack>
+                      <StackItem>
+                        <Title headingLevel="h2" size="lg">
+                          Recent activity
+                        </Title>
+                      </StackItem>
+                      <StackItem>
+                        <Text component="p" className="aam-muted">
+                          Syncs and remote actions aligned to an AAP-style activity stream.
+                        </Text>
+                      </StackItem>
+                    </Stack>
+                  </CardHeader>
+                  <CardBody>
+                    {activity.length === 0 ? (
+                      <EmptyState
+                        title="No activity recorded"
+                        description="Register an environment, queue a sync, or launch a managed action to populate the feed."
+                      />
+                    ) : (
+                      <ActivityTable items={activity.slice(0, 6)} />
+                    )}
+                  </CardBody>
+                </Card>
+              </GridItem>
+            </Grid>
           </StackItem>
         </>
       )}

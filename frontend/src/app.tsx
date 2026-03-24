@@ -9,6 +9,7 @@ import { ActivityPage } from "./pages/activity";
 import { DashboardPage } from "./pages/dashboard";
 import { EnvironmentDetailPage } from "./pages/environment-detail";
 import { EnvironmentsPage } from "./pages/environments";
+import { MonitoringPage } from "./pages/monitoring";
 import { PoliciesPage } from "./pages/policies";
 import { SearchPage } from "./pages/search";
 import { SettingsPage } from "./pages/settings";
@@ -35,6 +36,7 @@ export function App() {
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/monitoring" element={<MonitoringPage />} />
           <Route path="/environments" element={<EnvironmentsPage />} />
           <Route path="/environments/:environmentId" element={<EnvironmentDetailPage />} />
           <Route path="/activity" element={<ActivityPage />} />

@@ -16,6 +16,7 @@ from app.schemas import (
     EnvironmentDetail,
     EnvironmentSummary,
     EnvironmentUpdate,
+    MonitoringResponse,
     PolicyCreate,
     PolicyResponse,
     PolicyResultResponse,
@@ -34,6 +35,7 @@ from app.security import encrypt_secret, require_roles
 from app.services.collector import enqueue_sync, record_action
 from app.services.connectors import AAPConnector
 from app.services.dashboard import build_dashboard
+from app.services.monitoring import build_monitoring
 from app.services.search import run_search
 
 logger = logging.getLogger(__name__)
@@ -66,6 +68,14 @@ def dashboard(
     _: UserContext = Depends(require_roles("aam.viewer")),
 ) -> DashboardResponse:
     return build_dashboard(db)
+
+
+@router.get("/monitoring", response_model=MonitoringResponse)
+def monitoring(
+    db: Session = Depends(get_db),
+    _: UserContext = Depends(require_roles("aam.viewer")),
+) -> MonitoringResponse:
+    return build_monitoring(db)
 
 
 @router.get("/environments", response_model=list[EnvironmentSummary])

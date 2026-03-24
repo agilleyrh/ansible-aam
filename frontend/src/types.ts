@@ -87,6 +87,19 @@ export type DashboardResponse = {
   environment_summaries: EnvironmentSummary[];
 };
 
+export type MonitoringEnvironment = EnvironmentSummary & {
+  auth_mode: EnvironmentAuthMode;
+  verify_ssl: boolean;
+  sync_interval_minutes: number;
+  capabilities: Record<string, unknown>;
+  snapshots: ServiceSnapshot[];
+};
+
+export type MonitoringResponse = {
+  environment_count: number;
+  environments: MonitoringEnvironment[];
+};
+
 export type Policy = {
   id: string;
   name: string;

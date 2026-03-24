@@ -8,11 +8,12 @@ The current implementation is not a placeholder UI. It includes a working backen
 
 AAM lets you:
 
-- Register multiple AAP environments with gateway, controller, EDA, and automation hub endpoints.
+- Register multiple AAP environments through a focused modal flow that starts with the minimum required connection and credential data.
 - Store environment metadata, ownership, labels, tags, groups, credentials, and service path overrides.
 - Collect health and inventory from remote AAP services into one normalized hub.
-- Review a fleet dashboard with health, compliance, activity, resource coverage, and platform integration adoption.
-- Manage environment registration and edit structured capability declarations such as operator, Terraform, runner, receptor, content signing, Backstage, MCP, metrics, reports, and AI-assist expectations.
+- Review a fleet dashboard with health, compliance, resource coverage, and platform interface adoption.
+- Review a dedicated fleet monitoring page that consolidates gateway, controller, EDA, and automation hub monitoring points and collection configuration across every registered environment.
+- Manage environment registration and edit structured capability declarations such as operator, Terraform, runner, receptor, content signing, Backstage, MCP, metrics, reports, and AI-assist expectations after the environment is created.
 - Search resources across every synced environment from one console.
 - Review topology relationships for services, resources, and declared platform integrations.
 - Evaluate governance policies and review compliance results.
@@ -28,19 +29,18 @@ AAM lets you:
 
 ## Key capabilities in the current build
 
-- Fleet overview dashboard with service health, compliance rollup, environment registry, resource coverage, and platform interface adoption.
-- Environment registry with create, update, delete, and sync flows.
+- Fleet overview dashboard with high-level status, service health, compliance rollup, resource coverage, and interface adoption.
+- Dedicated fleet monitoring page with common AAP monitoring points, operational graphs, service readiness, and collection-configuration coverage.
+- Environment registry with modal registration, focused create flow, create/update/delete/sync actions, and clearer registry cards.
 - Environment detail page with:
-  - endpoint visibility
-  - activity scoped to one environment
-  - structured environment editing
-  - capability profile review
-  - service posture summaries
-  - tracked inventory with direct actions
+  - overview tab for endpoints, collection profile, and declared integrations
+  - monitoring tab for common monitoring points, service posture, and footprint graphs
+  - inventory tab for collected resources and direct actions
+  - settings tab for advanced registration fields and platform declarations
 - Governance page for policy definitions and evaluation results.
 - Fleet activity stream.
 - Cross-environment search.
-- Runtime settings page.
+- Administration/runtime settings page.
 - Topology page for service and integration relationships.
 
 ## Architecture summary
@@ -62,6 +62,7 @@ The backend currently exposes endpoints for:
 
 - health checks
 - dashboard summaries
+- monitoring summaries
 - environment CRUD
 - environment sync requests
 - environment topology
@@ -78,6 +79,14 @@ The API is mounted at `/api/v1`, and Swagger UI is available at `/docs`.
 ## UI design state
 
 The frontend now uses installed PatternFly React components directly instead of relying on custom HTML and class names to imitate PatternFly. PatternFly base CSS is imported from the local package, and the remaining custom CSS is limited to app-specific layout and visual adjustments.
+
+The information architecture is intentionally split by job:
+
+- `Overview` is the landing page for high-level fleet status.
+- `Monitoring` is the operational page for service posture, monitoring points, and graphs.
+- `Environments` is the registry and registration flow.
+- `Activity` is the fleet activity stream.
+- `Administration` is runtime configuration for the hub itself.
 
 ## Repository layout
 
@@ -304,6 +313,7 @@ python3 -m compileall backend/app backend/alembic
 docker compose -f deploy/docker-compose.yml up --build -d
 docker compose -f deploy/docker-compose.yml ps
 curl http://127.0.0.1:8000/api/v1/healthz
+curl -H 'X-RH-User: developer' -H 'X-RH-Roles: aam.admin' http://127.0.0.1:8000/api/v1/monitoring
 curl -I http://127.0.0.1:8080
 ```
 
@@ -319,9 +329,12 @@ After the stack is up:
 
 1. Open the UI.
 2. Go to `Environments`.
-3. Register an AAP environment with at least a gateway URL and any available controller, EDA, or hub endpoints.
-4. Save the environment and queue a sync.
-5. Review dashboard health, environment detail, activity, governance, search, and topology after collection completes.
+3. Click `Register environment` to open the modal registration flow.
+4. Register an AAP environment with at least a gateway URL plus valid collector credentials. Add controller, EDA, and hub URLs when those services should be monitored directly.
+5. Save the environment and queue a sync.
+6. Review `Monitoring` for the cross-environment operational view.
+7. Open the environment detail page to use the `Overview`, `Monitoring`, `Inventory`, and `Settings` tabs.
+8. Use `Activity`, `Governance`, `Search`, and `Topology` after collection completes.
 
 ## Platform access and RBAC assumptions
 

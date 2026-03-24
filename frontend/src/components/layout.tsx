@@ -25,18 +25,20 @@ import { LinkButton } from "./link-button";
 
 const links = [
   { to: "/", label: "Overview" },
+  { to: "/monitoring", label: "Monitoring" },
   { to: "/environments", label: "Environments" },
   { to: "/activity", label: "Activity" },
   { to: "/policies", label: "Governance" },
   { to: "/topology", label: "Topology" },
   { to: "/search", label: "Search" },
-  { to: "/settings", label: "Runtime settings" },
+  { to: "/settings", label: "Administration" },
 ];
 
 const quickLinks = [
+  { to: "/monitoring", label: "Monitoring" },
   { to: "/environments", label: "Environment registry" },
   { to: "/activity", label: "Activity stream" },
-  { to: "/settings", label: "Runtime settings" },
+  { to: "/settings", label: "Administration" },
 ];
 
 export function AppLayout() {

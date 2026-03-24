@@ -20,22 +20,20 @@ import {
 } from "@patternfly/react-core";
 
 import { api } from "../api";
-import { ActivityTable } from "../components/activity-table";
 import { EmptyState } from "../components/empty-state";
 import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
-import type { ActivityEvent, RuntimeSettings } from "../types";
+import type { RuntimeSettings } from "../types";
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<RuntimeSettings | null>(null);
-  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    Promise.allSettled([api.runtimeSettings(controller.signal), api.activity(undefined, controller.signal)])
-      .then(([settingsResult, activityResult]) => {
+    Promise.allSettled([api.runtimeSettings(controller.signal)])
+      .then(([settingsResult]) => {
         if (controller.signal.aborted) {
           return;
         }
@@ -43,9 +41,6 @@ export function SettingsPage() {
           setSettings(settingsResult.value);
         } else {
           setError(settingsResult.reason?.message ?? "Failed to load settings");
-        }
-        if (activityResult.status === "fulfilled") {
-          setActivity(activityResult.value);
         }
       })
       .finally(() => {
@@ -84,9 +79,9 @@ export function SettingsPage() {
     <Stack hasGutter>
       <StackItem>
         <PageHeader
-          section="Runtime settings"
-          title="Runtime settings and sync activity"
-          description="Review the hub's current operating defaults, trusted headers, and the latest fleet synchronization jobs."
+          section="Administration"
+          title="Runtime settings and deployment profile"
+          description="Review the running backend defaults, trusted headers, and the core settings that shape how the control hub behaves."
         />
       </StackItem>
 
@@ -176,36 +171,47 @@ export function SettingsPage() {
               </CardBody>
             </Card>
           </GridItem>
+          <GridItem lg={12}>
+            <Card isFlat>
+              <CardHeader>
+                <Stack>
+                  <StackItem>
+                    <Title headingLevel="h2" size="lg">
+                      Operating notes
+                    </Title>
+                  </StackItem>
+                  <StackItem>
+                    <Text component="p" className="aam-muted">
+                      Monitoring, activity, and environment registration are intentionally separated now. Use the monitoring page for collected signals, the activity page for sync and action history, and environment settings for platform-specific declarations.
+                    </Text>
+                  </StackItem>
+                </Stack>
+              </CardHeader>
+              <CardBody>
+                <DescriptionList isCompact isHorizontal columnModifier={{ default: "1Col" }}>
+                  <DescriptionListGroup>
+                    <DescriptionListTerm>Identity model</DescriptionListTerm>
+                    <DescriptionListDescription>
+                      Runtime identity is derived from trusted proxy headers when the platform is deployed behind a supported gateway.
+                    </DescriptionListDescription>
+                  </DescriptionListGroup>
+                  <DescriptionListGroup>
+                    <DescriptionListTerm>Collection model</DescriptionListTerm>
+                    <DescriptionListDescription>
+                      Environment sync cadence and service authentication are configured per environment in the registry, not in global runtime settings.
+                    </DescriptionListDescription>
+                  </DescriptionListGroup>
+                  <DescriptionListGroup>
+                    <DescriptionListTerm>Operational views</DescriptionListTerm>
+                    <DescriptionListDescription>
+                      Use Overview for fleet summary, Monitoring for platform signals, Environments for registration and settings, and Activity for operator actions and sync history.
+                    </DescriptionListDescription>
+                  </DescriptionListGroup>
+                </DescriptionList>
+              </CardBody>
+            </Card>
+          </GridItem>
         </Grid>
-      </StackItem>
-
-      <StackItem>
-        <Card isFlat>
-          <CardHeader>
-            <Stack>
-              <StackItem>
-                <Title headingLevel="h2" size="lg">
-                  Recent platform activity
-                </Title>
-              </StackItem>
-              <StackItem>
-                <Text component="p" className="aam-muted">
-                  Review sync jobs and operator actions recorded by the control hub.
-                </Text>
-              </StackItem>
-            </Stack>
-          </CardHeader>
-          <CardBody>
-            {activity.length === 0 ? (
-              <EmptyState
-                title="No activity yet"
-                description="Register an AAP environment and queue its first sync to populate the activity stream."
-              />
-            ) : (
-              <ActivityTable items={activity.slice(0, 12)} />
-            )}
-          </CardBody>
-        </Card>
       </StackItem>
     </Stack>
   );
