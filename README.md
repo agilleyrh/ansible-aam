@@ -58,15 +58,17 @@ More detail is in [docs/architecture.md](docs/architecture.md).
 
 The backend exposes endpoints for:
 
-- health checks
+- health checks (`GET /api/v1/healthz`)
 - dashboard and monitoring summaries
 - environment CRUD (including `deployment_type` and `infrastructure`)
 - environment sync and topology
-- **fleet jobs and job stats**
+- fleet jobs (`GET /api/v1/jobs`, `GET /api/v1/jobs/stats`)
 - policy definitions and results
 - search, sync history, activity stream
 - runtime settings
-- remote action execution (including `cancel_job`)
+- remote actions (`POST /api/v1/actions`), including `cancel_job` for active controller jobs
+
+Job listing accepts `status` values such as `running`, `failed`, or `active` (expands to running/pending/waiting). Cancel is performed through `POST /api/v1/actions` with `action: "cancel_job"` rather than a dedicated jobs cancel route.
 
 The API is mounted at `/api/v1`. Swagger UI is available at `/docs`.
 
@@ -201,6 +203,8 @@ npm run dev
 - Compose/Podman configs target lab usage; harden secrets and TLS for production.
 - OpenShift Operator scaffold provides CRD/RBAC/manager manifests; full reconciler packaging via Operator SDK is the next step.
 - Cloud/OpenShift/Podman are first-class **registration and labeling** dimensions today; deeper cloud-account or cluster-API integrations can be layered on next.
+- Job cancel targets controller jobs (`/api/controller/v2/jobs/{id}/cancel/`), not workflow or project update jobs.
+- Existing development databases created before the infrastructure migration still need `alembic upgrade head` — `create_all` alone does not add new columns.
 
 ## Related documents
 

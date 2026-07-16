@@ -21,7 +21,7 @@ import {
   Content,
   Title,
 } from "@patternfly/react-core";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { api } from "../api";
 import { EmptyState } from "../components/empty-state";
@@ -129,8 +129,9 @@ function TopologyEdgeList({ edges, nodes }: { edges: TopologyEdge[]; nodes: Topo
 }
 
 export function TopologyPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([]);
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState(searchParams.get("environmentId") ?? "");
   const [topology, setTopology] = useState<TopologyResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,12 +141,28 @@ export function TopologyPage() {
       .environments()
       .then((items) => {
         setEnvironments(items);
-        if (items.length > 0) {
-          setSelected(items[0].id);
-        }
+        const requested = searchParams.get("environmentId");
+        setSelected((current) => {
+          if (requested && items.some((item) => item.id === requested)) {
+            return requested;
+          }
+          if (current && items.some((item) => item.id === current)) {
+            return current;
+          }
+          return items[0]?.id ?? "";
+        });
       })
       .catch((err: Error) => setError(err.message));
-  }, []);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!selected) {
+      return;
+    }
+    if (searchParams.get("environmentId") !== selected) {
+      setSearchParams({ environmentId: selected }, { replace: true });
+    }
+  }, [selected, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!selected) {

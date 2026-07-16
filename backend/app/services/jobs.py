@@ -56,10 +56,22 @@ async def _stats_for_environment(environment: ManagedEnvironment) -> Environment
         return base
 
 
+def _normalize_status_filter(status: str | None) -> str | None | tuple[str, ...]:
+    if not status:
+        return None
+    normalized = status.strip().lower()
+    if normalized in {"active", "running,pending,waiting"}:
+        return ACTIVE_JOB_STATUSES
+    if "," in normalized:
+        parts = tuple(part.strip() for part in normalized.split(",") if part.strip())
+        return parts or None
+    return normalized
+
+
 async def _jobs_for_environment(
     environment: ManagedEnvironment,
     *,
-    status: str | None,
+    status: str | None | tuple[str, ...],
     limit: int,
 ) -> list[ControllerJob]:
     if not environment.controller_url:
@@ -126,10 +138,17 @@ async def build_fleet_jobs(
     if environment_id:
         query = query.where(ManagedEnvironment.id == environment_id)
     environments = list(db.scalars(query).all())
+    if not environments:
+        return FleetJobsResponse(jobs=[], stats=FleetJobStatsResponse(environment_count=0))
+
+    status_filter = _normalize_status_filter(status)
 
     job_lists, stats_list = await asyncio.gather(
         asyncio.gather(
-            *[_jobs_for_environment(environment, status=status, limit=limit_per_environment) for environment in environments]
+            *[
+                _jobs_for_environment(environment, status=status_filter, limit=limit_per_environment)
+                for environment in environments
+            ]
         ),
         asyncio.gather(*[_stats_for_environment(environment) for environment in environments]),
     )
@@ -138,15 +157,26 @@ async def build_fleet_jobs(
     for items in job_lists:
         jobs.extend(items)
 
-    status_rank = {"failed": 0, "error": 1, "canceled": 2, "running": 3, "waiting": 4, "pending": 5}
+    # Lower rank = higher priority in the table (failed/active first, then newest).
+    status_rank = {
+        "failed": 0,
+        "error": 1,
+        "canceled": 2,
+        "running": 3,
+        "waiting": 4,
+        "pending": 5,
+        "new": 6,
+        "successful": 7,
+    }
 
     def sort_key(job: ControllerJob) -> tuple[Any, ...]:
         return (
-            status_rank.get(job.status, 50),
+            status_rank.get(job.status.lower(), 50),
+            -(float(job.elapsed) if isinstance(job.elapsed, (int, float)) else 0.0),
             job.started or "",
             job.environment_name,
             job.name,
         )
 
-    jobs.sort(key=sort_key, reverse=True)
+    jobs.sort(key=sort_key)
     return FleetJobsResponse(jobs=jobs, stats=_rollup(list(stats_list)))

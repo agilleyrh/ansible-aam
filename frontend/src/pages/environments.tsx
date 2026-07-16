@@ -1,23 +1,23 @@
 import { useEffect, useState } from "react";
 
 import {
-	Alert,
-	Bullseye,
-	Button,
-	Card,
-	CardBody,
-	CardHeader,
-	Gallery,
-	Grid,
-	GridItem,
-	Stack,
-	StackItem,
-	Content,
-	Title
-} from '@patternfly/react-core';
-import {
-	Modal
-} from '@patternfly/react-core/deprecated';
+  Alert,
+  Bullseye,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Gallery,
+  Grid,
+  GridItem,
+  Modal,
+  ModalBody,
+  ModalHeader,
+  Stack,
+  StackItem,
+  Content,
+  Title,
+} from "@patternfly/react-core";
 import { Link } from "react-router-dom";
 
 import { api } from "../api";
@@ -94,6 +94,7 @@ export function EnvironmentsPage() {
     try {
       await api.syncEnvironment(environment.id);
       setMessage(`Queued a sync for ${environment.name}.`);
+      await loadEnvironments();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to queue a sync.");
     } finally {
@@ -288,34 +289,38 @@ export function EnvironmentsPage() {
 
       <Modal
         variant="large"
-        title="Register environment"
         isOpen={isCreateModalOpen}
         onClose={() => {
           if (!busy) {
             setIsCreateModalOpen(false);
           }
         }}
+        aria-labelledby="register-environment-title"
       >
-        <Stack hasGutter>
-          <StackItem>
-            <Content component="p" className="aam-muted">
-              Start with the connection, sync cadence, and collector credentials. Deeper platform declarations stay available after the environment is created.
-            </Content>
-          </StackItem>
-          <StackItem>
-            <EnvironmentForm
-              mode="create"
-              title="Register environment"
-              description="Create a managed environment record with its gateway, services, and collection credentials."
-              submitLabel="Register environment"
-              busy={busy}
-              errorMessage={error}
-              onSubmit={handleCreate}
-              variant="plain"
-              showAdvancedSettings={false}
-            />
-          </StackItem>
-        </Stack>
+        <ModalHeader title="Register environment" labelId="register-environment-title" />
+        <ModalBody>
+          <Stack hasGutter>
+            <StackItem>
+              <Content component="p" className="aam-muted">
+                Start with the connection, sync cadence, collector credentials, and infrastructure footprint. Deeper
+                platform declarations stay available after the environment is created.
+              </Content>
+            </StackItem>
+            <StackItem>
+              <EnvironmentForm
+                mode="create"
+                title="Register environment"
+                description="Create a managed environment record with its gateway, services, and collection credentials."
+                submitLabel="Register environment"
+                busy={busy}
+                errorMessage={error}
+                onSubmit={handleCreate}
+                variant="plain"
+                showAdvancedSettings={false}
+              />
+            </StackItem>
+          </Stack>
+        </ModalBody>
       </Modal>
     </Stack>
   );

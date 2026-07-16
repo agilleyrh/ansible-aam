@@ -727,7 +727,7 @@ export function EnvironmentDetailPage() {
                         </Stack>
                       </GridItem>
                       <GridItem md={4} style={{ textAlign: "right" }}>
-                        <LinkButton to="/topology" variant="secondary">
+                        <LinkButton to={`/topology?environmentId=${environment.id}`} variant="secondary">
                           View topology
                         </LinkButton>
                       </GridItem>

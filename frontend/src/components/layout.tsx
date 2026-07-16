@@ -3,9 +3,10 @@ import {
   CardBody,
   CardHeader,
   Masthead,
-  MastheadLogo,
+  MastheadBrand,
   MastheadContent,
-  MastheadMain, MastheadBrand,
+  MastheadLogo,
+  MastheadMain,
   Nav,
   NavItem,
   NavList,
@@ -49,21 +50,23 @@ export function AppLayout() {
   }
 
   const header = (
-    <Masthead >
+    <Masthead>
       <MastheadMain>
-        <MastheadBrand data-codemods><MastheadLogo data-codemods component="a" href="/">
-          <div className="aam-brand">
-            <div className="aam-brand__mark">A</div>
-            <div>
-              <Content component="small" className="aam-brand__eyebrow">
-                Red Hat Ansible Automation Platform
-              </Content>
-              <Title headingLevel="h1" size="lg" className="aam-brand__title">
-                Advanced Automation Manager
-              </Title>
+        <MastheadBrand>
+          <MastheadLogo component={(props) => <RouterLink {...props} to="/" />}>
+            <div className="aam-brand">
+              <div className="aam-brand__mark">A</div>
+              <div>
+                <Content component="small" className="aam-brand__eyebrow">
+                  Red Hat Ansible Automation Platform
+                </Content>
+                <Title headingLevel="h1" size="lg" className="aam-brand__title">
+                  Advanced Automation Manager
+                </Title>
+              </div>
             </div>
-          </div>
-        </MastheadLogo></MastheadBrand>
+          </MastheadLogo>
+        </MastheadBrand>
       </MastheadMain>
       <MastheadContent>
         <div className="aam-masthead-links">
@@ -78,14 +81,14 @@ export function AppLayout() {
   );
 
   const sidebar = (
-    <PageSidebar  isSidebarOpen>
+    <PageSidebar isSidebarOpen>
       <PageSidebarBody usePageInsets isFilled>
         <Stack hasGutter>
           <StackItem>
-            <Nav aria-label="Main navigation" >
+            <Nav aria-label="Main navigation">
               <NavList>
                 {links.map((link) => (
-                  <NavItem key={link.to} to={link.to} isActive={isActivePath(link.to)} itemId={link.to}>
+                  <NavItem key={link.to} itemId={link.to} isActive={isActivePath(link.to)}>
                     <RouterLink to={link.to}>{link.label}</RouterLink>
                   </NavItem>
                 ))}
@@ -93,7 +96,7 @@ export function AppLayout() {
             </Nav>
           </StackItem>
           <StackItem isFilled>
-            <Card  isCompact className="aam-sidebar-card">
+            <Card isCompact className="aam-sidebar-card">
               <CardHeader>
                 <Title headingLevel="h2" size="md">
                   Operating model
@@ -101,7 +104,7 @@ export function AppLayout() {
               </CardHeader>
               <CardBody>
                 <Content component="p">
-                  Register AAP environments, validate service health, run inventory syncs, and review governance results from one control hub.
+                  Register AAP environments across Podman, OpenShift, and cloud footprints. Monitor health, review live jobs, and act from one control hub.
                 </Content>
               </CardBody>
             </Card>
@@ -113,7 +116,7 @@ export function AppLayout() {
 
   return (
     <Page masthead={header} sidebar={sidebar} mainAriaLabel="Advanced Automation Manager">
-      <PageSection hasBodyWrapper={false}  isFilled>
+      <PageSection hasBodyWrapper={false} isFilled>
         <div className="aam-page-stack">
           <Outlet />
         </div>

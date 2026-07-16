@@ -1,23 +1,11 @@
 import { Button, type ButtonProps } from "@patternfly/react-core";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
-type Props = ButtonProps & {
+type Props = Omit<ButtonProps, "component"> & {
   to: string;
   replace?: boolean;
 };
 
-export function LinkButton({ to, replace = false, onClick, ...props }: Props) {
-  const navigate = useNavigate();
-
-  return (
-    <Button
-      {...props}
-      onClick={(event) => {
-        onClick?.(event);
-        if (!event.defaultPrevented) {
-          navigate(to, { replace });
-        }
-      }}
-    />
-  );
+export function LinkButton({ to, replace = false, ...props }: Props) {
+  return <Button {...props} component={(linkProps) => <Link {...linkProps} to={to} replace={replace} />} />;
 }

@@ -79,6 +79,8 @@ class AAPConnector:
                     headers[key] = value
             return headers
 
+        # service_account and pre-provisioned oauth2 tokens both use a stored bearer token.
+        # oauth2 without a stored token acquires one lazily in _ensure_auth_headers.
         token = decrypt_secret(self.environment.encrypted_token)
         if token:
             headers["Authorization"] = f"Bearer {token}"
@@ -140,9 +142,17 @@ class AAPConnector:
 
     async def _ensure_auth_headers(self) -> dict[str, str]:
         """Return headers with fresh auth for the current auth_mode."""
-        if self.environment.auth_mode == "oauth2" and not self.headers.get("Authorization"):
+        if self.headers.get("Authorization"):
+            return self.headers
+
+        if self.environment.auth_mode == "oauth2":
             token = await self._acquire_oauth2_token()
             self.headers["Authorization"] = f"Bearer {token}"
+            return self.headers
+
+        if self.environment.auth_mode == "service_account":
+            raise RuntimeError("Service account auth_mode requires an access token to be configured")
+
         return self.headers
 
     async def _request_json(
@@ -445,10 +455,40 @@ class AAPConnector:
 
         return summary, resources
 
-    async def list_jobs(self, *, status: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+    async def list_jobs(
+        self,
+        *,
+        status: str | None | tuple[str, ...] = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
         if not self.environment.controller_url:
             return []
         jobs_path = self.service_paths["controller"]["jobs"]
+
+        if isinstance(status, tuple):
+            if not status:
+                return []
+            per_status_limit = max(limit, 1)
+            batches = await asyncio.gather(
+                *[
+                    self._controller_results(
+                        jobs_path,
+                        params={"status": job_status, "order_by": "-started"},
+                        limit=per_status_limit,
+                    )
+                    for job_status in status
+                ]
+            )
+            merged: dict[str, dict[str, Any]] = {}
+            for batch in batches:
+                for item in batch:
+                    external_id = str(item.get("id") or item.get("pk") or "")
+                    if external_id:
+                        merged[external_id] = item
+            jobs = list(merged.values())
+            jobs.sort(key=lambda item: str(item.get("started") or ""), reverse=True)
+            return jobs[:limit]
+
         params: dict[str, Any] = {"order_by": "-started"}
         if status:
             params["status"] = status
@@ -595,7 +635,7 @@ class AAPConnector:
             response = await self._controller_request_json(
                 path_override or f"/api/controller/v2/jobs/{target_id}/cancel/",
                 method="POST",
-                json_body=payload or {},
+                json_body=None,
             )
         elif action == "sync_repository":
             service = "hub"

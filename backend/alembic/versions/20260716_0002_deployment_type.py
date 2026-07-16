@@ -24,11 +24,23 @@ def upgrade() -> None:
     )
     op.add_column(
         "managed_environments",
-        sa.Column("infrastructure", sa.JSON(), nullable=False, server_default="{}"),
+        sa.Column("infrastructure", sa.JSON(), nullable=False, server_default=sa.text("'{}'::json")),
     )
     op.create_index("ix_managed_environments_deployment_type", "managed_environments", ["deployment_type"])
-    op.alter_column("managed_environments", "deployment_type", server_default=None)
-    op.alter_column("managed_environments", "infrastructure", server_default=None)
+    op.alter_column(
+        "managed_environments",
+        "deployment_type",
+        existing_type=sa.String(length=40),
+        server_default=None,
+        existing_nullable=False,
+    )
+    op.alter_column(
+        "managed_environments",
+        "infrastructure",
+        existing_type=sa.JSON(),
+        server_default=None,
+        existing_nullable=False,
+    )
 
 
 def downgrade() -> None:

@@ -452,6 +452,8 @@ def _action_summary(action: str, payload: dict, response: dict) -> str:
         return "Started project sync"
     if action == "sync_repository":
         return "Started repository sync"
+    if action == "cancel_job":
+        return "Requested job cancel"
     if response.get("error"):
         return str(response["error"])
     return action.replace("_", " ")

@@ -41,6 +41,13 @@ function canCancel(status: string): boolean {
   return ["running", "pending", "waiting", "new"].includes(status.toLowerCase());
 }
 
+function resolveControllerUrl(job: ControllerJob): string | null {
+  if (job.url && /^https?:\/\//i.test(job.url)) {
+    return job.url;
+  }
+  return null;
+}
+
 export function JobsPage() {
   const [data, setData] = useState<FleetJobsResponse | null>(null);
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([]);
@@ -52,18 +59,11 @@ export function JobsPage() {
   const [cancelingId, setCancelingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const statusParam =
-      statusFilter === "all" ? undefined : statusFilter === "active" ? undefined : statusFilter;
     const response = await api.jobs({
-      status: statusParam,
+      status: statusFilter === "all" ? undefined : statusFilter,
       environmentId: environmentFilter === "all" ? undefined : environmentFilter,
       limitPerEnvironment: 30,
     });
-
-    if (statusFilter === "active") {
-      response.jobs = response.jobs.filter((job) => canCancel(job.status) || job.status === "running");
-    }
-
     setData(response);
   }, [environmentFilter, statusFilter]);
 
@@ -203,11 +203,15 @@ export function JobsPage() {
                 <Tbody>
                   {jobs.map((job) => {
                     const cancelKey = `${job.environment_id}:${job.id}`;
+                    const controllerUrl = resolveControllerUrl(job);
                     return (
                       <Tr key={cancelKey}>
                         <Td dataLabel="Job">
                           <div className="aam-data-list__primary">{job.name}</div>
-                          <div className="aam-data-list__secondary">#{job.id}{job.job_type ? ` · ${job.job_type}` : ""}</div>
+                          <div className="aam-data-list__secondary">
+                            #{job.id}
+                            {job.job_type ? ` · ${job.job_type}` : ""}
+                          </div>
                         </Td>
                         <Td dataLabel="Environment">
                           <Link to={`/environments/${job.environment_id}`}>{job.environment_name}</Link>
@@ -219,19 +223,25 @@ export function JobsPage() {
                         <Td dataLabel="Started">{job.started ? formatDateTime(job.started) : "—"}</Td>
                         <Td dataLabel="Elapsed">{typeof job.elapsed === "number" ? `${Math.round(job.elapsed)}s` : "—"}</Td>
                         <Td dataLabel="Actions">
-                          {canCancel(job.status) ? (
-                            <Button
-                              type="button"
-                              variant="danger"
-                              size="sm"
-                              isLoading={cancelingId === cancelKey}
-                              onClick={() => cancelJob(job)}
-                            >
-                              Cancel
-                            </Button>
-                          ) : (
-                            "—"
-                          )}
+                          <div className="aam-link-cluster">
+                            {controllerUrl ? (
+                              <Button component="a" href={controllerUrl} target="_blank" rel="noreferrer" variant="link" isInline>
+                                Open
+                              </Button>
+                            ) : null}
+                            {canCancel(job.status) ? (
+                              <Button
+                                type="button"
+                                variant="danger"
+                                size="sm"
+                                isLoading={cancelingId === cancelKey}
+                                onClick={() => cancelJob(job)}
+                              >
+                                Cancel
+                              </Button>
+                            ) : null}
+                            {!controllerUrl && !canCancel(job.status) ? "—" : null}
+                          </div>
                         </Td>
                       </Tr>
                     );
