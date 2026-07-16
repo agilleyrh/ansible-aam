@@ -8,7 +8,7 @@ import {
   DataListItemRow,
   Flex,
   Label,
-  Text,
+  Content,
 } from "@patternfly/react-core";
 import { Link } from "react-router-dom";
 
@@ -28,16 +28,16 @@ export function ActivityTable({ items, showEnvironment = true }: Props) {
         const rowId = `${item.kind}-${item.id}`;
         const cells: ReactNode[] = [
           <DataListCell key="time" width={1}>
-            <Text component="small" className="aam-muted">
+            <Content component="small" className="aam-muted">
               Time
-            </Text>
+            </Content>
             <div className="aam-data-list__primary">{formatDateTime(item.finished_at ?? item.started_at ?? item.created_at)}</div>
           </DataListCell>,
           showEnvironment ? (
             <DataListCell key="environment" width={2}>
-              <Text component="small" className="aam-muted">
+              <Content component="small" className="aam-muted">
                 Environment
-              </Text>
+              </Content>
               <div className="aam-data-list__primary">
                 <Link to={`/environments/${item.environment_id}`}>{item.environment_name}</Link>
               </div>
@@ -54,15 +54,15 @@ export function ActivityTable({ items, showEnvironment = true }: Props) {
               <Label isCompact color="grey">
                 {item.service}
               </Label>
-              <Label isCompact color="cyan">
+              <Label isCompact color="teal">
                 {humanize(item.operation)}
               </Label>
             </Flex>
           </DataListCell>,
           <DataListCell key="target" width={2}>
-            <Text component="small" className="aam-muted">
+            <Content component="small" className="aam-muted">
               Target
-            </Text>
+            </Content>
             <div className="aam-data-list__primary">{item.target}</div>
             <div className="aam-data-list__secondary">Requested by {item.requested_by}</div>
           </DataListCell>,

@@ -249,8 +249,9 @@ class AAPConnector:
             return len(payload)
         return 0
 
-    async def _controller_count(self, path: str | None) -> int:
-        payload = await self._controller_request_json(path, params={"page_size": 1})
+    async def _controller_count(self, path: str | None, *, params: dict[str, Any] | None = None) -> int:
+        request_params = {"page_size": 1, **(params or {})}
+        payload = await self._controller_request_json(path, params=request_params)
         if isinstance(payload, dict) and "count" in payload:
             return int(payload["count"])
         if isinstance(payload, list):
@@ -366,6 +367,9 @@ class AAPConnector:
         (
             ping,
             job_count,
+            running_job_count,
+            pending_job_count,
+            waiting_job_count,
             jt_count,
             workflow_count,
             inventory_count,
@@ -381,9 +385,13 @@ class AAPConnector:
             credentials,
             execution_environments,
             failed_jobs,
+            running_jobs,
         ) = await asyncio.gather(
             self._controller_request_json(ping_path),
             self._controller_count(jobs_path),
+            self._controller_count(jobs_path, params={"status": "running"}),
+            self._controller_count(jobs_path, params={"status": "pending"}),
+            self._controller_count(jobs_path, params={"status": "waiting"}),
             self._controller_count(jt_path),
             self._controller_count(workflow_path),
             self._controller_count(inventory_path),
@@ -399,6 +407,7 @@ class AAPConnector:
             self._controller_results(credential_path, limit=6),
             self._controller_results(ee_path, limit=6),
             self._controller_results(jobs_path, params={"status": "failed", "order_by": "-finished"}, limit=5),
+            self._controller_results(jobs_path, params={"status": "running", "order_by": "-started"}, limit=8),
         )
 
         resources = list(self._resource_records("controller", "job_template", templates))
@@ -408,12 +417,16 @@ class AAPConnector:
         resources.extend(self._resource_records("controller", "credential", credentials))
         resources.extend(self._resource_records("controller", "execution_environment", execution_environments))
         resources.extend(self._resource_records("controller", "failed_job", failed_jobs))
+        resources.extend(self._resource_records("controller", "running_job", running_jobs))
 
         failed_projects = sum(1 for project in projects if str(project.get("status", "")).lower() in {"failed", "error"})
         summary = {
             "health": "healthy",
             "version": ping.get("version") if isinstance(ping, dict) else None,
             "job_count": job_count,
+            "running_jobs": running_job_count,
+            "pending_jobs": pending_job_count,
+            "waiting_jobs": waiting_job_count,
             "job_template_count": jt_count,
             "workflow_job_template_count": workflow_count,
             "inventory_count": inventory_count,
@@ -431,6 +444,25 @@ class AAPConnector:
             summary["health"] = "warning"
 
         return summary, resources
+
+    async def list_jobs(self, *, status: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+        if not self.environment.controller_url:
+            return []
+        jobs_path = self.service_paths["controller"]["jobs"]
+        params: dict[str, Any] = {"order_by": "-started"}
+        if status:
+            params["status"] = status
+        return await self._controller_results(jobs_path, params=params, limit=limit)
+
+    async def get_job_status_counts(self) -> dict[str, int]:
+        if not self.environment.controller_url:
+            return {}
+        jobs_path = self.service_paths["controller"]["jobs"]
+        statuses = ("running", "pending", "waiting", "failed", "successful", "canceled", "error")
+        counts = await asyncio.gather(
+            *[self._controller_count(jobs_path, params={"status": job_status}) for job_status in statuses]
+        )
+        return {status: count for status, count in zip(statuses, counts, strict=True)}
 
     async def collect_eda(self) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         if not self.environment.eda_url:
@@ -502,6 +534,8 @@ class AAPConnector:
                     status = "enabled" if item.get("is_enabled", item.get("enabled", True)) else "disabled"
                 elif resource_type in {"job_template", "workflow_job_template", "execution_environment"}:
                     status = "ready"
+                elif resource_type == "running_job":
+                    status = item.get("status") or "running"
                 elif resource_type == "credential":
                     status = "configured"
                 elif resource_type in {"repository", "collection"}:
@@ -555,6 +589,13 @@ class AAPConnector:
                 path_override or f"/api/eda/v1/rulebook_activations/{target_id}/",
                 method="PATCH",
                 json_body={"is_enabled": payload.get("enabled", True)},
+            )
+        elif action == "cancel_job":
+            service = "controller"
+            response = await self._controller_request_json(
+                path_override or f"/api/controller/v2/jobs/{target_id}/cancel/",
+                method="POST",
+                json_body=payload or {},
             )
         elif action == "sync_repository":
             service = "hub"

@@ -23,7 +23,7 @@ import {
   StackItem,
   Tab,
   Tabs,
-  Text,
+  Content,
   Title,
 } from "@patternfly/react-core";
 import { useNavigate, useParams } from "react-router-dom";
@@ -48,7 +48,7 @@ import {
   monitoringPointGroups,
 } from "../monitoring";
 import type { ActivityEvent, EnvironmentDetail, EnvironmentMutationPayload, RemoteActionName, Resource } from "../types";
-import { formatDateTime, humanize, stringifyValue } from "../utils";
+import { deploymentTypeLabel, formatDateTime, humanize, stringifyValue } from "../utils";
 
 type ResourceAction = {
   action: RemoteActionName;
@@ -239,7 +239,7 @@ export function EnvironmentDetailPage() {
   if (!environment) {
     return (
       <Bullseye>
-        <Card isFlat>
+        <Card >
           <CardBody>Loading environment...</CardBody>
         </Card>
       </Bullseye>
@@ -373,7 +373,7 @@ export function EnvironmentDetailPage() {
               <StackItem>
                 <Grid hasGutter>
                   <GridItem lg={6}>
-                    <Card isFlat isFullHeight>
+                    <Card  isFullHeight>
                       <CardHeader>
                         <Stack>
                           <StackItem>
@@ -382,9 +382,9 @@ export function EnvironmentDetailPage() {
                             </Title>
                           </StackItem>
                           <StackItem>
-                            <Text component="p" className="aam-muted">
+                            <Content component="p" className="aam-muted">
                               Remote services currently configured for collection and action relay.
-                            </Text>
+                            </Content>
                           </StackItem>
                         </Stack>
                       </CardHeader>
@@ -392,6 +392,18 @@ export function EnvironmentDetailPage() {
                         <Stack hasGutter>
                           <StackItem>
                             <DescriptionList isCompact isHorizontal columnModifier={{ default: "1Col" }}>
+                              <DescriptionListGroup>
+                                <DescriptionListTerm>Infrastructure</DescriptionListTerm>
+                                <DescriptionListDescription>{deploymentTypeLabel(environment.deployment_type)}</DescriptionListDescription>
+                              </DescriptionListGroup>
+                              <DescriptionListGroup>
+                                <DescriptionListTerm>Region</DescriptionListTerm>
+                                <DescriptionListDescription>{stringifyValue(environment.infrastructure?.region)}</DescriptionListDescription>
+                              </DescriptionListGroup>
+                              <DescriptionListGroup>
+                                <DescriptionListTerm>Cluster / project</DescriptionListTerm>
+                                <DescriptionListDescription>{stringifyValue(environment.infrastructure?.cluster_or_project)}</DescriptionListDescription>
+                              </DescriptionListGroup>
                               <DescriptionListGroup>
                                 <DescriptionListTerm>Platform URL</DescriptionListTerm>
                                 <DescriptionListDescription>{environment.platform_url || "Not set"}</DescriptionListDescription>
@@ -428,7 +440,7 @@ export function EnvironmentDetailPage() {
                     </Card>
                   </GridItem>
                   <GridItem lg={6}>
-                    <Card isFlat isFullHeight>
+                    <Card  isFullHeight>
                       <CardHeader>
                         <Stack>
                           <StackItem>
@@ -437,9 +449,9 @@ export function EnvironmentDetailPage() {
                             </Title>
                           </StackItem>
                           <StackItem>
-                            <Text component="p" className="aam-muted">
+                            <Content component="p" className="aam-muted">
                               Settings that change how this environment is monitored and how operators are expected to access it.
-                            </Text>
+                            </Content>
                           </StackItem>
                         </Stack>
                       </CardHeader>
@@ -447,22 +459,22 @@ export function EnvironmentDetailPage() {
                         <div className="aam-summary-grid">
                           {getCollectionProfile(environment).map((item) => (
                             <div key={item.label} className="aam-summary-grid__item">
-                              <Text component="small" className="aam-muted">
+                              <Content component="small" className="aam-muted">
                                 {item.label}
-                              </Text>
+                              </Content>
                               <div>{item.value}</div>
                             </div>
                           ))}
                           <div className="aam-summary-grid__item">
-                            <Text component="small" className="aam-muted">
+                            <Content component="small" className="aam-muted">
                               Owner
-                            </Text>
+                            </Content>
                             <div>{environment.owner || "Unassigned"}</div>
                           </div>
                           <div className="aam-summary-grid__item">
-                            <Text component="small" className="aam-muted">
+                            <Content component="small" className="aam-muted">
                               Tags and groups
-                            </Text>
+                            </Content>
                             <div>{[...environment.tags, ...environment.groupings].join(", ") || "None set"}</div>
                           </div>
                         </div>
@@ -475,7 +487,7 @@ export function EnvironmentDetailPage() {
               <StackItem>
                 <Grid hasGutter>
                   <GridItem lg={6}>
-                    <Card isFlat isFullHeight>
+                    <Card  isFullHeight>
                       <CardHeader>
                         <Stack>
                           <StackItem>
@@ -484,9 +496,9 @@ export function EnvironmentDetailPage() {
                             </Title>
                           </StackItem>
                           <StackItem>
-                            <Text component="p" className="aam-muted">
+                            <Content component="p" className="aam-muted">
                               Lifecycle, runtime, portal, and trust capabilities mapped from the broader Ansible platform ecosystem.
-                            </Text>
+                            </Content>
                           </StackItem>
                         </Stack>
                       </CardHeader>
@@ -503,7 +515,7 @@ export function EnvironmentDetailPage() {
                     </Card>
                   </GridItem>
                   <GridItem lg={6}>
-                    <Card isFlat isFullHeight>
+                    <Card  isFullHeight>
                       <CardHeader>
                         <Grid hasGutter style={{ width: "100%" }}>
                           <GridItem md={8}>
@@ -514,9 +526,9 @@ export function EnvironmentDetailPage() {
                                 </Title>
                               </StackItem>
                               <StackItem>
-                                <Text component="p" className="aam-muted">
+                                <Content component="p" className="aam-muted">
                                   Sync runs and remote actions scoped to this environment.
-                                </Text>
+                                </Content>
                               </StackItem>
                             </Stack>
                           </GridItem>
@@ -549,7 +561,7 @@ export function EnvironmentDetailPage() {
 
               {Object.keys(extraCapabilities).length > 0 ? (
                 <StackItem>
-                  <Card isFlat>
+                  <Card >
                     <CardHeader>
                       <Stack>
                         <StackItem>
@@ -558,9 +570,9 @@ export function EnvironmentDetailPage() {
                           </Title>
                         </StackItem>
                         <StackItem>
-                          <Text component="p" className="aam-muted">
+                          <Content component="p" className="aam-muted">
                             Any extra capability settings that do not yet map to the structured profile.
-                          </Text>
+                          </Content>
                         </StackItem>
                       </Stack>
                     </CardHeader>
@@ -580,7 +592,7 @@ export function EnvironmentDetailPage() {
               <StackItem>
                 <Grid hasGutter>
                   <GridItem lg={6}>
-                    <Card isFlat isFullHeight>
+                    <Card  isFullHeight>
                       <CardHeader>
                         <Stack>
                           <StackItem>
@@ -589,9 +601,9 @@ export function EnvironmentDetailPage() {
                             </Title>
                           </StackItem>
                           <StackItem>
-                            <Text component="p" className="aam-muted">
+                            <Content component="p" className="aam-muted">
                               Core platform services and their latest collected health states.
-                            </Text>
+                            </Content>
                           </StackItem>
                         </Stack>
                       </CardHeader>
@@ -599,9 +611,9 @@ export function EnvironmentDetailPage() {
                         <div className="aam-summary-grid">
                           {monitoredServices.map((service) => (
                             <div key={`${environment.id}-${service}`} className="aam-summary-grid__item">
-                              <Text component="small" className="aam-muted">
+                              <Content component="small" className="aam-muted">
                                 {service.toUpperCase()}
-                              </Text>
+                              </Content>
                               <div>
                                 <StatusPill status={getSnapshotHealth(environment.snapshots, service)} />
                               </div>
@@ -612,7 +624,7 @@ export function EnvironmentDetailPage() {
                     </Card>
                   </GridItem>
                   <GridItem lg={6}>
-                    <Card isFlat isFullHeight>
+                    <Card  isFullHeight>
                       <CardHeader>
                         <Stack>
                           <StackItem>
@@ -621,9 +633,9 @@ export function EnvironmentDetailPage() {
                             </Title>
                           </StackItem>
                           <StackItem>
-                            <Text component="p" className="aam-muted">
+                            <Content component="p" className="aam-muted">
                               Visual summary of the inventory and automation resources currently tracked for this environment.
-                            </Text>
+                            </Content>
                           </StackItem>
                         </Stack>
                       </CardHeader>
@@ -636,7 +648,7 @@ export function EnvironmentDetailPage() {
               </StackItem>
 
               <StackItem>
-                <Card isFlat>
+                <Card >
                   <CardHeader>
                     <Stack>
                       <StackItem>
@@ -645,9 +657,9 @@ export function EnvironmentDetailPage() {
                         </Title>
                       </StackItem>
                       <StackItem>
-                        <Text component="p" className="aam-muted">
+                        <Content component="p" className="aam-muted">
                           A single view of the common gateway, controller, EDA, and automation hub signals collected for this environment.
-                        </Text>
+                        </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
@@ -655,7 +667,7 @@ export function EnvironmentDetailPage() {
                     <Stack hasGutter>
                       {monitoringPointGroups.map((group) => (
                         <StackItem key={`${environment.id}-${group.id}`}>
-                          <Card isFlat isCompact>
+                          <Card  isCompact>
                             <CardHeader>
                               <Stack>
                                 <StackItem>
@@ -664,9 +676,9 @@ export function EnvironmentDetailPage() {
                                   </Title>
                                 </StackItem>
                                 <StackItem>
-                                  <Text component="small" className="aam-muted">
+                                  <Content component="small" className="aam-muted">
                                     {group.description}
-                                  </Text>
+                                  </Content>
                                 </StackItem>
                               </Stack>
                             </CardHeader>
@@ -674,9 +686,9 @@ export function EnvironmentDetailPage() {
                               <div className="aam-summary-grid">
                                 {group.points.map((point) => (
                                   <div key={`${environment.id}-${group.id}-${point.key}`} className="aam-summary-grid__item">
-                                    <Text component="small" className="aam-muted">
+                                    <Content component="small" className="aam-muted">
                                       {point.label}
-                                    </Text>
+                                    </Content>
                                     {point.key === "health" ? (
                                       <div>
                                         <StatusPill status={String(getMonitoringValue(environment.snapshots, point))} />
@@ -697,7 +709,7 @@ export function EnvironmentDetailPage() {
               </StackItem>
 
               <StackItem>
-                <Card isFlat>
+                <Card >
                   <CardHeader>
                     <Grid hasGutter style={{ width: "100%" }}>
                       <GridItem md={8}>
@@ -708,9 +720,9 @@ export function EnvironmentDetailPage() {
                             </Title>
                           </StackItem>
                           <StackItem>
-                            <Text component="p" className="aam-muted">
+                            <Content component="p" className="aam-muted">
                               Raw summaries for each registered AAP component.
-                            </Text>
+                            </Content>
                           </StackItem>
                         </Stack>
                       </GridItem>
@@ -730,7 +742,7 @@ export function EnvironmentDetailPage() {
                     ) : (
                       <Gallery hasGutter minWidths={{ default: "280px" }}>
                         {environment.snapshots.map((snapshot) => (
-                          <Card key={snapshot.service} isFlat isCompact>
+                          <Card key={snapshot.service}  isCompact>
                             <CardHeader>
                               <Grid hasGutter style={{ width: "100%" }}>
                                 <GridItem md={8}>
@@ -766,7 +778,7 @@ export function EnvironmentDetailPage() {
           <Tab eventKey="inventory" title="Inventory">
             <Stack hasGutter className="aam-tab-panel">
               <StackItem>
-                <Card isFlat>
+                <Card >
                   <CardHeader>
                     <Stack>
                       <StackItem>
@@ -775,9 +787,9 @@ export function EnvironmentDetailPage() {
                         </Title>
                       </StackItem>
                       <StackItem>
-                        <Text component="p" className="aam-muted">
+                        <Content component="p" className="aam-muted">
                           Controller, EDA, and automation hub resources with the direct actions that map to upstream AAP workflows.
-                        </Text>
+                        </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
@@ -834,41 +846,41 @@ export function EnvironmentDetailPage() {
 
                             return (
                               <StackItem key={resource.id}>
-                                <Card isFlat isCompact>
+                                <Card  isCompact>
                                   <CardBody>
                                     <Grid hasGutter>
                                       <GridItem lg={4}>
                                         <Title headingLevel="h3" size="md">
                                           {resource.name}
                                         </Title>
-                                        <Text component="small" className="aam-muted">
+                                        <Content component="small" className="aam-muted">
                                           {[resource.namespace, resource.external_id].filter(Boolean).join(" · ")}
-                                        </Text>
+                                        </Content>
                                       </GridItem>
                                       <GridItem lg={2}>
-                                        <Text component="small" className="aam-muted">
+                                        <Content component="small" className="aam-muted">
                                           Service
-                                        </Text>
+                                        </Content>
                                         <div>{resource.service}</div>
                                       </GridItem>
                                       <GridItem lg={2}>
-                                        <Text component="small" className="aam-muted">
+                                        <Content component="small" className="aam-muted">
                                           Type
-                                        </Text>
+                                        </Content>
                                         <div>{humanize(resource.resource_type)}</div>
                                       </GridItem>
                                       <GridItem lg={2}>
-                                        <Text component="small" className="aam-muted">
+                                        <Content component="small" className="aam-muted">
                                           Status
-                                        </Text>
+                                        </Content>
                                         <div>
                                           <StatusPill status={resource.status} />
                                         </div>
                                       </GridItem>
                                       <GridItem lg={2}>
-                                        <Text component="small" className="aam-muted">
+                                        <Content component="small" className="aam-muted">
                                           Last seen
-                                        </Text>
+                                        </Content>
                                         <div>{formatDateTime(resource.last_seen_at)}</div>
                                       </GridItem>
                                       <GridItem span={12}>
@@ -884,9 +896,9 @@ export function EnvironmentDetailPage() {
                                             {busyAction ? "Working..." : action.label}
                                           </Button>
                                         ) : (
-                                          <Text component="small" className="aam-muted">
+                                          <Content component="small" className="aam-muted">
                                             No direct action for this resource type.
-                                          </Text>
+                                          </Content>
                                         )}
                                       </GridItem>
                                     </Grid>

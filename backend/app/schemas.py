@@ -13,6 +13,9 @@ class UserContext(BaseModel):
     groups: list[str] = Field(default_factory=list)
 
 
+DeploymentType = Literal["podman", "openshift", "aws", "gcp", "azure", "other"]
+
+
 class EnvironmentBase(BaseModel):
     name: str
     slug: str
@@ -21,6 +24,8 @@ class EnvironmentBase(BaseModel):
     tags: list[str] = Field(default_factory=list)
     groupings: list[str] = Field(default_factory=list)
     labels: dict[str, Any] = Field(default_factory=dict)
+    deployment_type: DeploymentType = "podman"
+    infrastructure: dict[str, Any] = Field(default_factory=dict)
     platform_url: str | None = None
     gateway_url: str
     controller_url: str | None = None
@@ -48,6 +53,8 @@ class EnvironmentUpdate(BaseModel):
     tags: list[str] | None = None
     groupings: list[str] | None = None
     labels: dict[str, Any] | None = None
+    deployment_type: DeploymentType | None = None
+    infrastructure: dict[str, Any] | None = None
     platform_url: str | None = None
     gateway_url: str | None = None
     controller_url: str | None = None
@@ -73,6 +80,8 @@ class EnvironmentSummary(BaseModel):
     owner: str
     tags: list[str]
     groupings: list[str]
+    deployment_type: str = "podman"
+    infrastructure: dict[str, Any] = Field(default_factory=dict)
     status: str
     platform_version: str | None
     last_synced_at: datetime | None
@@ -249,6 +258,7 @@ class RemoteActionRequest(BaseModel):
         "set_activation_state",
         "sync_project",
         "sync_repository",
+        "cancel_job",
     ]
     target_id: str
     target_name: str | None = None
@@ -262,6 +272,56 @@ class RemoteActionResponse(BaseModel):
     service: str
     target: str
     response_body: dict[str, Any] = Field(default_factory=dict)
+
+
+class ControllerJob(BaseModel):
+    id: str
+    name: str
+    status: str
+    job_type: str | None = None
+    started: str | None = None
+    finished: str | None = None
+    elapsed: float | None = None
+    environment_id: str
+    environment_name: str
+    deployment_type: str | None = None
+    url: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class EnvironmentJobStats(BaseModel):
+    environment_id: str
+    environment_name: str
+    deployment_type: str
+    status: str
+    controller_configured: bool
+    running: int = 0
+    pending: int = 0
+    waiting: int = 0
+    failed: int = 0
+    successful: int = 0
+    canceled: int = 0
+    error: int = 0
+    total: int = 0
+    error_message: str | None = None
+
+
+class FleetJobStatsResponse(BaseModel):
+    environment_count: int
+    running: int = 0
+    pending: int = 0
+    waiting: int = 0
+    failed: int = 0
+    successful: int = 0
+    canceled: int = 0
+    error: int = 0
+    total: int = 0
+    by_environment: list[EnvironmentJobStats] = Field(default_factory=list)
+
+
+class FleetJobsResponse(BaseModel):
+    jobs: list[ControllerJob] = Field(default_factory=list)
+    stats: FleetJobStatsResponse
 
 
 class RuntimeSettingsResponse(BaseModel):

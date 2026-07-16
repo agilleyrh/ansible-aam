@@ -1,0 +1,23 @@
+apiVersion: aam.openshift.io/v1alpha1
+kind: AAMInstance
+metadata:
+  name: aam
+  namespace: aam-system
+spec:
+  replicas:
+    api: 2
+    worker: 2
+    scheduler: 1
+  images:
+    api: quay.io/example/aam-api:latest
+    ui: quay.io/example/aam-ui:latest
+  database:
+    mode: bundled
+  redis:
+    mode: bundled
+  route:
+    host: aam.apps.example.com
+    tls: true
+  corsOrigins:
+    - https://aam.apps.example.com
+  gatewayTrustedProxy: true

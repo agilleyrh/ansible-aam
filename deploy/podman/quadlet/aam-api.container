@@ -1,0 +1,15 @@
+[Unit]
+Description=AAM API
+After=aam-postgres.service aam-redis.service
+Requires=aam-postgres.service aam-redis.service
+
+[Container]
+Image=localhost/aam-api:latest
+EnvironmentFile=/etc/aam/backend.env
+PublishPort=8000:8000
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

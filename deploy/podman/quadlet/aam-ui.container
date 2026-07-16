@@ -1,0 +1,14 @@
+[Unit]
+Description=AAM UI
+After=aam-api.service
+Requires=aam-api.service
+
+[Container]
+Image=localhost/aam-ui:latest
+PublishPort=8080:8080
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

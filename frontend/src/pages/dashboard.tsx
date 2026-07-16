@@ -12,7 +12,7 @@ import {
   Progress,
   Stack,
   StackItem,
-  Text,
+  Content,
   Title,
 } from "@patternfly/react-core";
 
@@ -77,7 +77,7 @@ export function DashboardPage() {
   if (loading && !data) {
     return (
       <Bullseye>
-        <Card isFlat>
+        <Card >
           <CardBody>Loading dashboard...</CardBody>
         </Card>
       </Bullseye>
@@ -91,7 +91,7 @@ export function DashboardPage() {
   if (!data) {
     return (
       <Bullseye>
-        <Card isFlat>
+        <Card >
           <CardBody>Loading dashboard...</CardBody>
         </Card>
       </Bullseye>
@@ -157,7 +157,7 @@ export function DashboardPage() {
 
       {!hasEnvironments ? (
         <StackItem>
-          <Card isFlat>
+          <Card >
             <CardBody>
               <EmptyState
                 title="No AAP environments registered"
@@ -176,7 +176,7 @@ export function DashboardPage() {
           <StackItem>
             <Grid hasGutter>
               <GridItem lg={6}>
-                <Card isFlat isFullHeight>
+                <Card  isFullHeight>
                   <CardHeader>
                     <Stack>
                       <StackItem>
@@ -185,9 +185,9 @@ export function DashboardPage() {
                         </Title>
                       </StackItem>
                       <StackItem>
-                        <Text component="p" className="aam-muted">
+                        <Content component="p" className="aam-muted">
                           Most recent policy outcomes across the fleet.
-                        </Text>
+                        </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
@@ -210,7 +210,7 @@ export function DashboardPage() {
                 </Card>
               </GridItem>
               <GridItem lg={6}>
-                <Card isFlat isFullHeight>
+                <Card  isFullHeight>
                   <CardHeader>
                     <Stack>
                       <StackItem>
@@ -219,9 +219,9 @@ export function DashboardPage() {
                         </Title>
                       </StackItem>
                       <StackItem>
-                        <Text component="p" className="aam-muted">
+                        <Content component="p" className="aam-muted">
                           Component readiness by service type. Open the monitoring view for the full cross-environment breakdown.
-                        </Text>
+                        </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
@@ -253,7 +253,7 @@ export function DashboardPage() {
           <StackItem>
             <Grid hasGutter>
               <GridItem lg={6}>
-                <Card isFlat isFullHeight>
+                <Card  isFullHeight>
                   <CardHeader>
                     <Stack>
                       <StackItem>
@@ -262,9 +262,9 @@ export function DashboardPage() {
                         </Title>
                       </StackItem>
                       <StackItem>
-                        <Text component="p" className="aam-muted">
+                        <Content component="p" className="aam-muted">
                           Use this as a quick view of which environments need deeper investigation in the monitoring page.
-                        </Text>
+                        </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
@@ -274,7 +274,7 @@ export function DashboardPage() {
                 </Card>
               </GridItem>
               <GridItem lg={6}>
-                <Card isFlat isFullHeight>
+                <Card  isFullHeight>
                   <CardHeader>
                     <Stack>
                       <StackItem>
@@ -283,9 +283,9 @@ export function DashboardPage() {
                         </Title>
                       </StackItem>
                       <StackItem>
-                        <Text component="p" className="aam-muted">
+                        <Content component="p" className="aam-muted">
                           Declared platform interfaces and integration patterns across the fleet.
-                        </Text>
+                        </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
@@ -314,7 +314,7 @@ export function DashboardPage() {
           <StackItem>
             <Grid hasGutter>
               <GridItem lg={6}>
-                <Card isFlat isFullHeight>
+                <Card  isFullHeight>
                   <CardHeader>
                     <Stack>
                       <StackItem>
@@ -323,9 +323,9 @@ export function DashboardPage() {
                         </Title>
                       </StackItem>
                       <StackItem>
-                        <Text component="p" className="aam-muted">
+                        <Content component="p" className="aam-muted">
                           Resource types discovered from controller, EDA, and automation hub integrations.
-                        </Text>
+                        </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
@@ -349,7 +349,7 @@ export function DashboardPage() {
                 </Card>
               </GridItem>
               <GridItem lg={6}>
-                <Card isFlat isFullHeight>
+                <Card  isFullHeight>
                   <CardHeader>
                     <Stack>
                       <StackItem>
@@ -358,9 +358,9 @@ export function DashboardPage() {
                         </Title>
                       </StackItem>
                       <StackItem>
-                        <Text component="p" className="aam-muted">
+                        <Content component="p" className="aam-muted">
                           Syncs and remote actions aligned to an AAP-style activity stream.
-                        </Text>
+                        </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>

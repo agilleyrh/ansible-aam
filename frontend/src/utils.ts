@@ -19,6 +19,25 @@ export function humanize(value: string | null | undefined, fallback = "Unknown")
   return value.replaceAll("_", " ");
 }
 
+export function deploymentTypeLabel(value: string | null | undefined): string {
+  switch (value) {
+    case "podman":
+      return "RHEL / Podman";
+    case "openshift":
+      return "OpenShift";
+    case "aws":
+      return "AWS";
+    case "gcp":
+      return "GCP";
+    case "azure":
+      return "Azure";
+    case "other":
+      return "Other";
+    default:
+      return humanize(value, "Unknown");
+  }
+}
+
 export function stringifyValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "Not available";

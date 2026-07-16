@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { Alert, Bullseye, Card, CardBody, CardHeader, FormSelect, FormSelectOption, Gallery, Stack, StackItem, Text, Title } from "@patternfly/react-core";
+import { Alert, Bullseye, Card, CardBody, CardHeader, FormSelect, FormSelectOption, Gallery, Stack, StackItem, Content, Title } from "@patternfly/react-core";
 
 import { api } from "../api";
 import { ActivityTable } from "../components/activity-table";
@@ -49,7 +49,7 @@ export function ActivityPage() {
   if (loading && items.length === 0) {
     return (
       <Bullseye>
-        <Card isFlat>
+        <Card >
           <CardBody>Loading activity stream...</CardBody>
         </Card>
       </Bullseye>
@@ -104,7 +104,7 @@ export function ActivityPage() {
       </StackItem>
 
       <StackItem>
-        <Card isFlat>
+        <Card >
           <CardHeader>
             <Stack>
               <StackItem>
@@ -113,9 +113,9 @@ export function ActivityPage() {
                 </Title>
               </StackItem>
               <StackItem>
-                <Text component="p" className="aam-muted">
+                <Content component="p" className="aam-muted">
                   Ordered newest first and aligned to the activity-stream pattern used across controller and AAP.
-                </Text>
+                </Content>
               </StackItem>
             </Stack>
           </CardHeader>

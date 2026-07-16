@@ -15,7 +15,7 @@ import {
   GridItem,
   Stack,
   StackItem,
-  Text,
+  Content,
   Title,
 } from "@patternfly/react-core";
 
@@ -54,7 +54,7 @@ export function SettingsPage() {
   if (loading && !settings) {
     return (
       <Bullseye>
-        <Card isFlat>
+        <Card >
           <CardBody>Loading runtime settings...</CardBody>
         </Card>
       </Bullseye>
@@ -68,7 +68,7 @@ export function SettingsPage() {
   if (!settings) {
     return (
       <Bullseye>
-        <Card isFlat>
+        <Card >
           <CardBody>Loading runtime settings...</CardBody>
         </Card>
       </Bullseye>
@@ -103,7 +103,7 @@ export function SettingsPage() {
       <StackItem>
         <Grid hasGutter>
           <GridItem lg={6}>
-            <Card isFlat isFullHeight>
+            <Card  isFullHeight>
               <CardHeader>
                 <Stack>
                   <StackItem>
@@ -112,9 +112,9 @@ export function SettingsPage() {
                     </Title>
                   </StackItem>
                   <StackItem>
-                    <Text component="p" className="aam-muted">
+                    <Content component="p" className="aam-muted">
                       The gateway identity contract currently expected by the API.
-                    </Text>
+                    </Content>
                   </StackItem>
                 </Stack>
               </CardHeader>
@@ -138,7 +138,7 @@ export function SettingsPage() {
             </Card>
           </GridItem>
           <GridItem lg={6}>
-            <Card isFlat isFullHeight>
+            <Card  isFullHeight>
               <CardHeader>
                 <Stack>
                   <StackItem>
@@ -147,9 +147,9 @@ export function SettingsPage() {
                     </Title>
                   </StackItem>
                   <StackItem>
-                    <Text component="p" className="aam-muted">
+                    <Content component="p" className="aam-muted">
                       These settings are loaded from the running backend configuration.
-                    </Text>
+                    </Content>
                   </StackItem>
                 </Stack>
               </CardHeader>
@@ -172,7 +172,7 @@ export function SettingsPage() {
             </Card>
           </GridItem>
           <GridItem lg={12}>
-            <Card isFlat>
+            <Card >
               <CardHeader>
                 <Stack>
                   <StackItem>
@@ -181,9 +181,9 @@ export function SettingsPage() {
                     </Title>
                   </StackItem>
                   <StackItem>
-                    <Text component="p" className="aam-muted">
+                    <Content component="p" className="aam-muted">
                       Monitoring, activity, and environment registration are intentionally separated now. Use the monitoring page for collected signals, the activity page for sync and action history, and environment settings for platform-specific declarations.
-                    </Text>
+                    </Content>
                   </StackItem>
                 </Stack>
               </CardHeader>

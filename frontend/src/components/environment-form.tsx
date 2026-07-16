@@ -19,14 +19,14 @@ import {
   GridItem,
   Stack,
   StackItem,
-  Text,
+  Content,
   TextArea,
   TextInput,
   Title,
 } from "@patternfly/react-core";
 
 import { buildCapabilities, parseCapabilityProfile, type ManagementMode } from "../capabilities";
-import type { EnvironmentAuthMode, EnvironmentDetail, EnvironmentMutationPayload } from "../types";
+import type { DeploymentType, EnvironmentAuthMode, EnvironmentDetail, EnvironmentMutationPayload } from "../types";
 
 type SubmitOptions = {
   syncAfterSave: boolean;
@@ -54,6 +54,11 @@ type FormState = {
   tags: string;
   groupings: string;
   labels: string;
+  deployment_type: DeploymentType;
+  region: string;
+  cluster_or_project: string;
+  account_or_subscription: string;
+  host_or_namespace: string;
   platform_url: string;
   gateway_url: string;
   controller_url: string;
@@ -131,6 +136,7 @@ function parseObjectField(value: string, label: string): Record<string, unknown>
 
 function buildInitialState(initialValue?: EnvironmentDetail | null): FormState {
   const { profile, extraCapabilities } = parseCapabilityProfile(initialValue?.capabilities);
+  const infrastructure = initialValue?.infrastructure ?? {};
   return {
     name: initialValue?.name ?? "",
     slug: initialValue?.slug ?? "",
@@ -139,6 +145,12 @@ function buildInitialState(initialValue?: EnvironmentDetail | null): FormState {
     tags: initialValue?.tags.join(", ") ?? "",
     groupings: initialValue?.groupings.join(", ") ?? "",
     labels: initialValue ? toPrettyJson(initialValue.labels) : emptyJson,
+    deployment_type: initialValue?.deployment_type ?? "podman",
+    region: typeof infrastructure.region === "string" ? infrastructure.region : "",
+    cluster_or_project: typeof infrastructure.cluster_or_project === "string" ? infrastructure.cluster_or_project : "",
+    account_or_subscription:
+      typeof infrastructure.account_or_subscription === "string" ? infrastructure.account_or_subscription : "",
+    host_or_namespace: typeof infrastructure.host_or_namespace === "string" ? infrastructure.host_or_namespace : "",
     platform_url: initialValue?.platform_url ?? "",
     gateway_url: initialValue?.gateway_url ?? "",
     controller_url: initialValue?.controller_url ?? "",
@@ -182,9 +194,9 @@ function FormSection({ title, description, children }: SectionProps) {
         <Title headingLevel="h3" size="lg">
           {title}
         </Title>
-        <Text component="p" className="aam-form-section__description">
+        <Content component="p" className="aam-form-section__description">
           {description}
-        </Text>
+        </Content>
       </div>
       {children}
     </StackItem>
@@ -255,6 +267,20 @@ export function EnvironmentForm({
     try {
       validateCredentialState(mode, form.auth_mode, form.client_id, form.client_secret, form.access_token);
 
+      const infrastructure: Record<string, unknown> = {};
+      if (form.region.trim()) {
+        infrastructure.region = form.region.trim();
+      }
+      if (form.cluster_or_project.trim()) {
+        infrastructure.cluster_or_project = form.cluster_or_project.trim();
+      }
+      if (form.account_or_subscription.trim()) {
+        infrastructure.account_or_subscription = form.account_or_subscription.trim();
+      }
+      if (form.host_or_namespace.trim()) {
+        infrastructure.host_or_namespace = form.host_or_namespace.trim();
+      }
+
       const payload: EnvironmentMutationPayload = {
         name: form.name.trim(),
         slug: form.slug.trim(),
@@ -263,6 +289,8 @@ export function EnvironmentForm({
         tags: splitCsv(form.tags),
         groupings: splitCsv(form.groupings),
         labels: parseObjectField(form.labels, "Labels"),
+        deployment_type: form.deployment_type,
+        infrastructure,
         platform_url: form.platform_url.trim() || null,
         gateway_url: form.gateway_url.trim(),
         controller_url: form.controller_url.trim() || null,
@@ -404,6 +432,80 @@ export function EnvironmentForm({
         </StackItem>
 
         <FormSection
+          title="Infrastructure footprint"
+          description="Tell the hub where this AAP estate runs so operators can filter and govern Podman, OpenShift, and cloud environments together."
+        >
+          <Grid hasGutter>
+            <GridItem md={6}>
+              <FormGroup label="Deployment type" fieldId={`${fieldPrefix}-deployment-type`} isRequired>
+                <FormSelect
+                  id={`${fieldPrefix}-deployment-type`}
+                  value={form.deployment_type}
+                  onChange={(_, value) => updateField("deployment_type", value as DeploymentType)}
+                >
+                  <FormSelectOption value="podman" label="RHEL / Podman (containerized)" />
+                  <FormSelectOption value="openshift" label="OpenShift" />
+                  <FormSelectOption value="aws" label="AWS" />
+                  <FormSelectOption value="gcp" label="Google Cloud (GCP)" />
+                  <FormSelectOption value="azure" label="Microsoft Azure" />
+                  <FormSelectOption value="other" label="Other" />
+                </FormSelect>
+              </FormGroup>
+            </GridItem>
+            <GridItem md={6}>
+              <FormGroup label="Region / availability zone" fieldId={`${fieldPrefix}-region`}>
+                <TextInput
+                  id={`${fieldPrefix}-region`}
+                  value={form.region}
+                  onChange={(_, value) => updateField("region", value)}
+                  placeholder="us-east-1, eastus, us-central1"
+                />
+              </FormGroup>
+            </GridItem>
+            <GridItem md={6}>
+              <FormGroup
+                label={form.deployment_type === "openshift" ? "Cluster" : "Cluster / project"}
+                fieldId={`${fieldPrefix}-cluster`}
+              >
+                <TextInput
+                  id={`${fieldPrefix}-cluster`}
+                  value={form.cluster_or_project}
+                  onChange={(_, value) => updateField("cluster_or_project", value)}
+                  placeholder="prod-cluster, my-gcp-project"
+                />
+              </FormGroup>
+            </GridItem>
+            <GridItem md={6}>
+              <FormGroup label="Account / subscription" fieldId={`${fieldPrefix}-account`}>
+                <TextInput
+                  id={`${fieldPrefix}-account`}
+                  value={form.account_or_subscription}
+                  onChange={(_, value) => updateField("account_or_subscription", value)}
+                  placeholder="aws-account, azure-subscription"
+                />
+              </FormGroup>
+            </GridItem>
+            <GridItem md={6}>
+              <FormGroup
+                label={form.deployment_type === "podman" ? "Host / inventory name" : "Namespace"}
+                fieldId={`${fieldPrefix}-host-namespace`}
+              >
+                <TextInput
+                  id={`${fieldPrefix}-host-namespace`}
+                  value={form.host_or_namespace}
+                  onChange={(_, value) => updateField("host_or_namespace", value)}
+                  placeholder={form.deployment_type === "podman" ? "aap-host-01.example.com" : "aap"}
+                />
+              </FormGroup>
+            </GridItem>
+          </Grid>
+        </FormSection>
+
+        <StackItem>
+          <Divider />
+        </StackItem>
+
+        <FormSection
           title="Service endpoints"
           description="Register the platform gateway first, then add controller, EDA, and automation hub endpoints when they should be monitored directly."
         >
@@ -526,13 +628,13 @@ export function EnvironmentForm({
               </GridItem>
             ) : null}
             <GridItem span={12}>
-              <Text component="small" className="aam-form-help">
+              <Content component="small" className="aam-form-help">
                 {form.auth_mode === "oauth2"
                   ? "Use an access token when one is already provisioned, or provide client credentials so the hub can request a token."
                   : form.auth_mode === "service_account"
                     ? "Register a long-lived service account token for collection."
                     : "Use this only when the UI and API are behind a trusted proxy that forwards platform identity headers."}
-              </Text>
+              </Content>
             </GridItem>
           </Grid>
         </FormSection>
@@ -859,7 +961,7 @@ export function EnvironmentForm({
   }
 
   return (
-    <Card isFlat>
+    <Card >
       <CardHeader>
         <Stack hasGutter>
           <StackItem>
@@ -868,9 +970,9 @@ export function EnvironmentForm({
             </Title>
           </StackItem>
           <StackItem>
-            <Text component="p" className="aam-muted">
+            <Content component="p" className="aam-muted">
               {description}
-            </Text>
+            </Content>
           </StackItem>
         </Stack>
       </CardHeader>

@@ -1,4 +1,4 @@
-import { Card, CardBody, Stack, StackItem, Text, Title } from "@patternfly/react-core";
+import { Card, CardBody, Stack, StackItem, Content, Title } from "@patternfly/react-core";
 
 type Props = {
   label: string;
@@ -8,13 +8,13 @@ type Props = {
 
 export function StatCard({ label, value, detail }: Props) {
   return (
-    <Card isFlat isFullHeight>
+    <Card  isFullHeight>
       <CardBody>
         <Stack hasGutter>
           <StackItem>
-            <Text component="small" className="aam-stat-card__label">
+            <Content component="small" className="aam-stat-card__label">
               {label}
-            </Text>
+            </Content>
           </StackItem>
           <StackItem>
             <Title headingLevel="h3" size="2xl">
@@ -23,9 +23,9 @@ export function StatCard({ label, value, detail }: Props) {
           </StackItem>
           {detail ? (
             <StackItem>
-              <Text component="small" className="aam-muted">
+              <Content component="small" className="aam-muted">
                 {detail}
-              </Text>
+              </Content>
             </StackItem>
           ) : null}
         </Stack>

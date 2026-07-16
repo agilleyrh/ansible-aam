@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aam-operator
+  namespace: aam-system
+  labels:
+    app.kubernetes.io/name: aam-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aam-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aam-operator
+    spec:
+      serviceAccountName: aam-operator
+      containers:
+        - name: manager
+          # Replace with the Operator manager image built via Operator SDK.
+          image: quay.io/example/aam-operator:latest
+          imagePullPolicy: Always
+          args:
+            - --leader-elect
+          env:
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+      securityContext:
+        runAsNonRoot: true

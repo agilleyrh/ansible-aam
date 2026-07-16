@@ -1,7 +1,7 @@
 import { FormEvent, useState } from "react";
 import type { SyntheticEvent } from "react";
 
-import { Alert, Card, CardBody, CardHeader, Grid, GridItem, SearchInput, Stack, StackItem, Text, Title } from "@patternfly/react-core";
+import { Alert, Card, CardBody, CardHeader, Grid, GridItem, SearchInput, Stack, StackItem, Content, Title } from "@patternfly/react-core";
 import { SearchIcon } from "@patternfly/react-icons";
 import { Link } from "react-router-dom";
 
@@ -45,7 +45,7 @@ export function SearchPage() {
       </StackItem>
 
       <StackItem>
-        <Card isFlat>
+        <Card >
           <CardBody>
             <form onSubmit={onSubmit}>
               <SearchInput
@@ -73,7 +73,7 @@ export function SearchPage() {
       </StackItem>
 
       <StackItem>
-        <Card isFlat>
+        <Card >
           <CardHeader>
             <Stack>
               <StackItem>
@@ -82,9 +82,9 @@ export function SearchPage() {
                 </Title>
               </StackItem>
               <StackItem>
-                <Text component="p" className="aam-muted">
+                <Content component="p" className="aam-muted">
                   Query across all registered environments or narrow the term to a specific service or resource type.
-                </Text>
+                </Content>
               </StackItem>
             </Stack>
           </CardHeader>
@@ -104,41 +104,41 @@ export function SearchPage() {
             ) : (
               <Stack hasGutter>
                 {results.map((result) => (
-                  <Card key={result.id} isFlat isCompact>
+                  <Card key={result.id}  isCompact>
                     <CardBody>
                       <Grid hasGutter>
                         <GridItem md={4}>
                           <Title headingLevel="h3" size="md">
                             {result.name}
                           </Title>
-                          <Text component="small" className="aam-muted">
+                          <Content component="small" className="aam-muted">
                             {result.url ?? result.id}
-                          </Text>
+                          </Content>
                         </GridItem>
                         <GridItem md={2}>
-                          <Text component="small" className="aam-muted">
+                          <Content component="small" className="aam-muted">
                             Environment
-                          </Text>
+                          </Content>
                           <div>
                             <Link to={`/environments/${result.environment_id}`}>{result.environment_name}</Link>
                           </div>
                         </GridItem>
                         <GridItem md={2}>
-                          <Text component="small" className="aam-muted">
+                          <Content component="small" className="aam-muted">
                             Service
-                          </Text>
+                          </Content>
                           <div>{result.service}</div>
                         </GridItem>
                         <GridItem md={2}>
-                          <Text component="small" className="aam-muted">
+                          <Content component="small" className="aam-muted">
                             Type
-                          </Text>
+                          </Content>
                           <div>{humanize(result.resource_type)}</div>
                         </GridItem>
                         <GridItem md={2}>
-                          <Text component="small" className="aam-muted">
+                          <Content component="small" className="aam-muted">
                             Status
-                          </Text>
+                          </Content>
                           <div>
                             <StatusPill status={result.status} />
                           </div>

@@ -1,5 +1,7 @@
 export type EnvironmentAuthMode = "oauth2" | "service_account" | "header_passthrough";
 
+export type DeploymentType = "podman" | "openshift" | "aws" | "gcp" | "azure" | "other";
+
 export type EnvironmentSummary = {
   id: string;
   name: string;
@@ -8,6 +10,8 @@ export type EnvironmentSummary = {
   owner: string;
   tags: string[];
   groupings: string[];
+  deployment_type: DeploymentType;
+  infrastructure: Record<string, unknown>;
   status: string;
   platform_version: string | null;
   last_synced_at: string | null;
@@ -60,6 +64,8 @@ export type EnvironmentMutationPayload = {
   tags: string[];
   groupings: string[];
   labels: Record<string, unknown>;
+  deployment_type: DeploymentType;
+  infrastructure: Record<string, unknown>;
   platform_url: string | null;
   gateway_url: string;
   controller_url: string | null;
@@ -201,7 +207,8 @@ export type RemoteActionName =
   | "launch_workflow_job_template"
   | "set_activation_state"
   | "sync_project"
-  | "sync_repository";
+  | "sync_repository"
+  | "cancel_job";
 
 export type RemoteActionRequest = {
   environment_id: string;
@@ -218,4 +225,54 @@ export type RemoteActionResponse = {
   service: string;
   target: string;
   response_body: Record<string, unknown>;
+};
+
+export type ControllerJob = {
+  id: string;
+  name: string;
+  status: string;
+  job_type: string | null;
+  started: string | null;
+  finished: string | null;
+  elapsed: number | null;
+  environment_id: string;
+  environment_name: string;
+  deployment_type: string | null;
+  url: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type EnvironmentJobStats = {
+  environment_id: string;
+  environment_name: string;
+  deployment_type: string;
+  status: string;
+  controller_configured: boolean;
+  running: number;
+  pending: number;
+  waiting: number;
+  failed: number;
+  successful: number;
+  canceled: number;
+  error: number;
+  total: number;
+  error_message: string | null;
+};
+
+export type FleetJobStats = {
+  environment_count: number;
+  running: number;
+  pending: number;
+  waiting: number;
+  failed: number;
+  successful: number;
+  canceled: number;
+  error: number;
+  total: number;
+  by_environment: EnvironmentJobStats[];
+};
+
+export type FleetJobsResponse = {
+  jobs: ControllerJob[];
+  stats: FleetJobStats;
 };

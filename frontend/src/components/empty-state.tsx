@@ -5,9 +5,7 @@ import {
   EmptyStateActions,
   EmptyStateBody,
   EmptyStateFooter,
-  EmptyStateHeader,
-  EmptyStateIcon,
-} from "@patternfly/react-core";
+  } from "@patternfly/react-core";
 import { CubesIcon } from "@patternfly/react-icons";
 
 type Props = {
@@ -20,8 +18,7 @@ type Props = {
 
 export function EmptyState({ title, description, action, icon = CubesIcon, variant = "lg" }: Props) {
   return (
-    <PatternFlyEmptyState variant={variant}>
-      <EmptyStateHeader titleText={title} headingLevel="h3" icon={<EmptyStateIcon icon={icon} />} />
+    <PatternFlyEmptyState  headingLevel="h3" icon={icon}  titleText={title} variant={variant}>
       <EmptyStateBody>{description}</EmptyStateBody>
       {action ? (
         <EmptyStateFooter>

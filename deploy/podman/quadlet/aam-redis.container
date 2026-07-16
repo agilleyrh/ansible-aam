@@ -1,0 +1,13 @@
+[Unit]
+Description=AAM Redis
+After=network-online.target
+
+[Container]
+Image=docker.io/library/redis:7-alpine
+PublishPort=6379:6379
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

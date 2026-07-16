@@ -4,6 +4,8 @@ import type {
   EnvironmentDetail,
   EnvironmentMutationPayload,
   EnvironmentSummary,
+  FleetJobsResponse,
+  FleetJobStats,
   MonitoringResponse,
   Policy,
   PolicyResult,
@@ -52,7 +54,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       if (typeof payload.detail === "string") {
         detail = payload.detail;
       } else if (Array.isArray(payload.detail)) {
-        detail = payload.detail.map((item) => (typeof item === "object" && item !== null && "msg" in item ? (item as { msg: string }).msg : String(item))).join("; ");
+        detail = payload.detail
+          .map((item) =>
+            typeof item === "object" && item !== null && "msg" in item ? (item as { msg: string }).msg : String(item),
+          )
+          .join("; ");
       }
     } catch {
       // Preserve the status text when the response body is empty or not JSON.
@@ -84,8 +90,26 @@ export const api = {
   search: (q: string, signal?: AbortSignal) => request<SearchResult[]>(`/search?q=${encodeURIComponent(q)}`, { signal }),
   syncExecutions: (signal?: AbortSignal) => request<SyncExecution[]>("/sync-executions", { signal }),
   activity: (environmentId?: string, signal?: AbortSignal) =>
-    request<ActivityEvent[]>(`/activity${environmentId ? `?environment_id=${encodeURIComponent(environmentId)}` : ""}`, { signal }),
+    request<ActivityEvent[]>(`/activity${environmentId ? `?environment_id=${encodeURIComponent(environmentId)}` : ""}`, {
+      signal,
+    }),
   runtimeSettings: (signal?: AbortSignal) => request<RuntimeSettings>("/settings/runtime", { signal }),
-  executeAction: (payload: RemoteActionRequest) =>
-    request<RemoteActionResponse>("/actions", { method: "POST", body: payload }),
+  executeAction: (payload: RemoteActionRequest) => request<RemoteActionResponse>("/actions", { method: "POST", body: payload }),
+  jobs: (
+    options: { status?: string; environmentId?: string; limitPerEnvironment?: number; signal?: AbortSignal } = {},
+  ) => {
+    const params = new URLSearchParams();
+    if (options.status) {
+      params.set("status", options.status);
+    }
+    if (options.environmentId) {
+      params.set("environment_id", options.environmentId);
+    }
+    if (options.limitPerEnvironment) {
+      params.set("limit_per_environment", String(options.limitPerEnvironment));
+    }
+    const query = params.toString();
+    return request<FleetJobsResponse>(`/jobs${query ? `?${query}` : ""}`, { signal: options.signal });
+  },
+  jobStats: (signal?: AbortSignal) => request<FleetJobStats>("/jobs/stats", { signal }),
 };

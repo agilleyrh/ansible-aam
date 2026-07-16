@@ -3,20 +3,19 @@ import {
   CardBody,
   CardHeader,
   Masthead,
-  MastheadBrand,
+  MastheadLogo,
   MastheadContent,
-  MastheadMain,
+  MastheadMain, MastheadBrand,
   Nav,
   NavItem,
   NavList,
   Page,
   PageSection,
-  PageSectionVariants,
   PageSidebar,
   PageSidebarBody,
   Stack,
   StackItem,
-  Text,
+  Content,
   Title,
 } from "@patternfly/react-core";
 import { Link as RouterLink, Outlet, useLocation } from "react-router-dom";
@@ -26,6 +25,7 @@ import { LinkButton } from "./link-button";
 const links = [
   { to: "/", label: "Overview" },
   { to: "/monitoring", label: "Monitoring" },
+  { to: "/jobs", label: "Jobs" },
   { to: "/environments", label: "Environments" },
   { to: "/activity", label: "Activity" },
   { to: "/policies", label: "Governance" },
@@ -35,9 +35,9 @@ const links = [
 ];
 
 const quickLinks = [
+  { to: "/jobs", label: "Fleet jobs" },
   { to: "/monitoring", label: "Monitoring" },
   { to: "/environments", label: "Environment registry" },
-  { to: "/activity", label: "Activity stream" },
   { to: "/settings", label: "Administration" },
 ];
 
@@ -49,21 +49,21 @@ export function AppLayout() {
   }
 
   const header = (
-    <Masthead backgroundColor="dark">
+    <Masthead >
       <MastheadMain>
-        <MastheadBrand component="a" href="/">
+        <MastheadBrand data-codemods><MastheadLogo data-codemods component="a" href="/">
           <div className="aam-brand">
             <div className="aam-brand__mark">A</div>
             <div>
-              <Text component="small" className="aam-brand__eyebrow">
+              <Content component="small" className="aam-brand__eyebrow">
                 Red Hat Ansible Automation Platform
-              </Text>
+              </Content>
               <Title headingLevel="h1" size="lg" className="aam-brand__title">
                 Advanced Automation Manager
               </Title>
             </div>
           </div>
-        </MastheadBrand>
+        </MastheadLogo></MastheadBrand>
       </MastheadMain>
       <MastheadContent>
         <div className="aam-masthead-links">
@@ -78,11 +78,11 @@ export function AppLayout() {
   );
 
   const sidebar = (
-    <PageSidebar theme="light" isSidebarOpen>
+    <PageSidebar  isSidebarOpen>
       <PageSidebarBody usePageInsets isFilled>
         <Stack hasGutter>
           <StackItem>
-            <Nav aria-label="Main navigation" theme="light">
+            <Nav aria-label="Main navigation" >
               <NavList>
                 {links.map((link) => (
                   <NavItem key={link.to} to={link.to} isActive={isActivePath(link.to)} itemId={link.to}>
@@ -93,16 +93,16 @@ export function AppLayout() {
             </Nav>
           </StackItem>
           <StackItem isFilled>
-            <Card isFlat isCompact className="aam-sidebar-card">
+            <Card  isCompact className="aam-sidebar-card">
               <CardHeader>
                 <Title headingLevel="h2" size="md">
                   Operating model
                 </Title>
               </CardHeader>
               <CardBody>
-                <Text component="p">
+                <Content component="p">
                   Register AAP environments, validate service health, run inventory syncs, and review governance results from one control hub.
-                </Text>
+                </Content>
               </CardBody>
             </Card>
           </StackItem>
@@ -112,8 +112,8 @@ export function AppLayout() {
   );
 
   return (
-    <Page header={header} sidebar={sidebar} mainAriaLabel="Advanced Automation Manager">
-      <PageSection variant={PageSectionVariants.light} isFilled>
+    <Page masthead={header} sidebar={sidebar} mainAriaLabel="Advanced Automation Manager">
+      <PageSection hasBodyWrapper={false}  isFilled>
         <div className="aam-page-stack">
           <Outlet />
         </div>

@@ -11,7 +11,7 @@ import {
   GridItem,
   Stack,
   StackItem,
-  Text,
+  Content,
   Title,
 } from "@patternfly/react-core";
 
@@ -109,7 +109,7 @@ export function MonitoringPage() {
   if (loading && !data) {
     return (
       <Bullseye>
-        <Card isFlat>
+        <Card >
           <CardBody>Loading monitoring posture...</CardBody>
         </Card>
       </Bullseye>
@@ -123,7 +123,7 @@ export function MonitoringPage() {
   if (!data) {
     return (
       <Bullseye>
-        <Card isFlat>
+        <Card >
           <CardBody>Loading monitoring posture...</CardBody>
         </Card>
       </Bullseye>
@@ -269,7 +269,7 @@ export function MonitoringPage() {
 
       {environments.length === 0 ? (
         <StackItem>
-          <Card isFlat>
+          <Card >
             <CardBody>
               <EmptyState
                 title="No monitoring data yet"
@@ -288,7 +288,7 @@ export function MonitoringPage() {
           <StackItem>
             <Grid hasGutter>
               <GridItem lg={6}>
-                <Card isFlat isFullHeight>
+                <Card  isFullHeight>
                   <CardHeader>
                     <Stack>
                       <StackItem>
@@ -297,9 +297,9 @@ export function MonitoringPage() {
                         </Title>
                       </StackItem>
                       <StackItem>
-                        <Text component="p" className="aam-muted">
+                        <Content component="p" className="aam-muted">
                           Health distribution for the gateway, controller, EDA, and automation hub surfaces collected from each environment.
-                        </Text>
+                        </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
@@ -348,7 +348,7 @@ export function MonitoringPage() {
                 </Card>
               </GridItem>
               <GridItem lg={6}>
-                <Card isFlat isFullHeight>
+                <Card  isFullHeight>
                   <CardHeader>
                     <Stack>
                       <StackItem>
@@ -357,9 +357,9 @@ export function MonitoringPage() {
                         </Title>
                       </StackItem>
                       <StackItem>
-                        <Text component="p" className="aam-muted">
+                        <Content component="p" className="aam-muted">
                           High-value controller, EDA, and hub metrics surfaced from the latest collection snapshots.
-                        </Text>
+                        </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
@@ -374,7 +374,7 @@ export function MonitoringPage() {
           <StackItem>
             <Grid hasGutter>
               <GridItem lg={6}>
-                <Card isFlat isFullHeight>
+                <Card  isFullHeight>
                   <CardHeader>
                     <Stack>
                       <StackItem>
@@ -383,9 +383,9 @@ export function MonitoringPage() {
                         </Title>
                       </StackItem>
                       <StackItem>
-                        <Text component="p" className="aam-muted">
+                        <Content component="p" className="aam-muted">
                           Health scores derived from the latest service snapshots for each environment.
-                        </Text>
+                        </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
@@ -408,7 +408,7 @@ export function MonitoringPage() {
                 </Card>
               </GridItem>
               <GridItem lg={6}>
-                <Card isFlat isFullHeight>
+                <Card  isFullHeight>
                   <CardHeader>
                     <Stack>
                       <StackItem>
@@ -417,9 +417,9 @@ export function MonitoringPage() {
                         </Title>
                       </StackItem>
                       <StackItem>
-                        <Text component="p" className="aam-muted">
+                        <Content component="p" className="aam-muted">
                           Runtime and interface declarations that affect how each environment is monitored and governed.
-                        </Text>
+                        </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
@@ -432,7 +432,7 @@ export function MonitoringPage() {
           </StackItem>
 
           <StackItem>
-            <Card isFlat>
+            <Card >
               <CardHeader>
                 <Stack>
                   <StackItem>
@@ -441,16 +441,16 @@ export function MonitoringPage() {
                     </Title>
                   </StackItem>
                   <StackItem>
-                    <Text component="p" className="aam-muted">
+                    <Content component="p" className="aam-muted">
                       Each card consolidates service health, the common monitoring points collected for that environment, and the registration settings that change collection behavior.
-                    </Text>
+                    </Content>
                   </StackItem>
                 </Stack>
               </CardHeader>
               <CardBody>
                 <Gallery hasGutter minWidths={{ default: "340px", xl: "380px" }}>
                   {environments.map((environment) => (
-                    <Card key={environment.id} isFlat isFullHeight isCompact>
+                    <Card key={environment.id}  isFullHeight isCompact>
                       <CardHeader>
                         <Stack hasGutter>
                           <StackItem>
@@ -459,9 +459,9 @@ export function MonitoringPage() {
                             </Title>
                           </StackItem>
                           <StackItem>
-                            <Text component="small" className="aam-muted">
+                            <Content component="small" className="aam-muted">
                               Last sync {formatDateTime(environment.last_synced_at)}
-                            </Text>
+                            </Content>
                           </StackItem>
                         </Stack>
                       </CardHeader>
@@ -472,9 +472,9 @@ export function MonitoringPage() {
                               <StatusPill status={environment.status} />
                               {monitoredServices.map((service) => (
                                 <div key={`${environment.id}-${service}`}>
-                                  <Text component="small" className="aam-muted">
+                                  <Content component="small" className="aam-muted">
                                     {service.toUpperCase()}
-                                  </Text>
+                                  </Content>
                                   <div>
                                     <StatusPill status={getSnapshotHealth(environment.snapshots, service)} />
                                   </div>
@@ -483,15 +483,15 @@ export function MonitoringPage() {
                             </div>
                           </StackItem>
                           <StackItem>
-                            <Text component="small" className="aam-muted">
+                            <Content component="small" className="aam-muted">
                               Collection profile
-                            </Text>
+                            </Content>
                             <div className="aam-summary-grid">
                               {getCollectionProfile(environment).map((item) => (
                                 <div key={`${environment.id}-${item.label}`} className="aam-summary-grid__item">
-                                  <Text component="small" className="aam-muted">
+                                  <Content component="small" className="aam-muted">
                                     {item.label}
-                                  </Text>
+                                  </Content>
                                   <div>{item.value}</div>
                                 </div>
                               ))}
@@ -499,15 +499,15 @@ export function MonitoringPage() {
                           </StackItem>
                           {monitoringPointGroups.map((group) => (
                             <StackItem key={`${environment.id}-${group.id}`}>
-                              <Text component="small" className="aam-muted">
+                              <Content component="small" className="aam-muted">
                                 {group.title}
-                              </Text>
+                              </Content>
                               <div className="aam-summary-grid">
                                 {group.points.map((point) => (
                                   <div key={`${environment.id}-${group.id}-${point.key}`} className="aam-summary-grid__item">
-                                    <Text component="small" className="aam-muted">
+                                    <Content component="small" className="aam-muted">
                                       {point.label}
-                                    </Text>
+                                    </Content>
                                     {point.key === "health" ? (
                                       <div>
                                         <StatusPill status={String(getMonitoringValue(environment.snapshots, point))} />

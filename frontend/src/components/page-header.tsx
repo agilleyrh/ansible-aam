@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { Flex, FlexItem, Text, Title } from "@patternfly/react-core";
+import { Flex, FlexItem, Content, Title } from "@patternfly/react-core";
 
 type Props = {
   section: string;
@@ -19,15 +19,15 @@ export function PageHeader({ section, title, description, actions }: Props) {
       gap={{ default: "gapMd" }}
     >
       <FlexItem flex={{ default: "flex_1" }}>
-        <Text component="small" className="aam-page-header__section">
+        <Content component="small" className="aam-page-header__section">
           {section}
-        </Text>
+        </Content>
         <Title headingLevel="h1" size="2xl">
           {title}
         </Title>
-        <Text component="p" className="aam-page-header__description">
+        <Content component="p" className="aam-page-header__description">
           {description}
-        </Text>
+        </Content>
       </FlexItem>
       {actions ? (
         <FlexItem>

@@ -34,6 +34,10 @@ class ManagedEnvironment(Base, TimestampedMixin):
     capabilities: Mapped[dict] = mapped_column(JSON, default=dict)
     service_paths: Mapped[dict] = mapped_column(JSON, default=dict)
 
+    # Where this AAP estate runs: podman (RHEL), openshift, or public cloud.
+    deployment_type: Mapped[str] = mapped_column(String(40), default="podman", index=True)
+    infrastructure: Mapped[dict] = mapped_column(JSON, default=dict)
+
     platform_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     gateway_url: Mapped[str] = mapped_column(String(500))
     controller_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

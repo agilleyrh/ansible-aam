@@ -1,0 +1,15 @@
+[Unit]
+Description=AAM Worker
+After=aam-postgres.service aam-redis.service
+Requires=aam-postgres.service aam-redis.service
+
+[Container]
+Image=localhost/aam-api:latest
+Exec=python -m app.worker
+EnvironmentFile=/etc/aam/backend.env
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

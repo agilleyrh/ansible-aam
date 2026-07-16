@@ -16,6 +16,8 @@ from app.schemas import (
     EnvironmentDetail,
     EnvironmentSummary,
     EnvironmentUpdate,
+    FleetJobsResponse,
+    FleetJobStatsResponse,
     MonitoringResponse,
     PolicyCreate,
     PolicyResponse,
@@ -35,6 +37,7 @@ from app.security import encrypt_secret, require_roles
 from app.services.collector import enqueue_sync, record_action
 from app.services.connectors import AAPConnector
 from app.services.dashboard import build_dashboard
+from app.services.jobs import build_fleet_job_stats, build_fleet_jobs
 from app.services.monitoring import build_monitoring
 from app.services.search import run_search
 
@@ -78,6 +81,30 @@ def monitoring(
     return build_monitoring(db)
 
 
+@router.get("/jobs", response_model=FleetJobsResponse)
+async def list_jobs(
+    status: str | None = Query(default=None, description="Filter by controller job status"),
+    environment_id: str | None = Query(default=None),
+    limit_per_environment: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _: UserContext = Depends(require_roles("aam.viewer")),
+) -> FleetJobsResponse:
+    return await build_fleet_jobs(
+        db,
+        status=status,
+        environment_id=environment_id,
+        limit_per_environment=limit_per_environment,
+    )
+
+
+@router.get("/jobs/stats", response_model=FleetJobStatsResponse)
+async def job_stats(
+    db: Session = Depends(get_db),
+    _: UserContext = Depends(require_roles("aam.viewer")),
+) -> FleetJobStatsResponse:
+    return await build_fleet_job_stats(db)
+
+
 @router.get("/environments", response_model=list[EnvironmentSummary])
 def list_environments(
     db: Session = Depends(get_db),
@@ -109,6 +136,8 @@ def create_environment(
         tags=payload.tags,
         groupings=payload.groupings,
         labels=payload.labels,
+        deployment_type=payload.deployment_type,
+        infrastructure=payload.infrastructure,
         platform_url=payload.platform_url,
         gateway_url=payload.gateway_url,
         controller_url=payload.controller_url,

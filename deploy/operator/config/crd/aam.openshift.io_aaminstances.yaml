@@ -1,0 +1,103 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: aaminstances.aam.openshift.io
+spec:
+  group: aam.openshift.io
+  names:
+    kind: AAMInstance
+    listKind: AAMInstanceList
+    plural: aaminstances
+    singular: aaminstance
+    shortNames:
+      - aami
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                replicas:
+                  type: object
+                  properties:
+                    api:
+                      type: integer
+                      minimum: 1
+                      default: 1
+                    worker:
+                      type: integer
+                      minimum: 1
+                      default: 1
+                    scheduler:
+                      type: integer
+                      minimum: 1
+                      default: 1
+                images:
+                  type: object
+                  properties:
+                    api:
+                      type: string
+                    ui:
+                      type: string
+                database:
+                  type: object
+                  properties:
+                    mode:
+                      type: string
+                      enum: [bundled, external]
+                      default: bundled
+                    urlSecretRef:
+                      type: string
+                redis:
+                  type: object
+                  properties:
+                    mode:
+                      type: string
+                      enum: [bundled, external]
+                      default: bundled
+                    urlSecretRef:
+                      type: string
+                route:
+                  type: object
+                  properties:
+                    host:
+                      type: string
+                    tls:
+                      type: boolean
+                      default: true
+                corsOrigins:
+                  type: array
+                  items:
+                    type: string
+                gatewayTrustedProxy:
+                  type: boolean
+                  default: true
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                apiURL:
+                  type: string
+                uiURL:
+                  type: string
+                observedGeneration:
+                  type: integer
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: UI
+          type: string
+          jsonPath: .status.uiURL
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      subresources:
+        status: {}

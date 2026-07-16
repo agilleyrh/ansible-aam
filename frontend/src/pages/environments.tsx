@@ -1,21 +1,23 @@
 import { useEffect, useState } from "react";
 
 import {
-  Alert,
-  Bullseye,
-  Button,
-  Card,
-  CardBody,
-  CardHeader,
-  Gallery,
-  Grid,
-  GridItem,
-  Modal,
-  Stack,
-  StackItem,
-  Text,
-  Title,
-} from "@patternfly/react-core";
+	Alert,
+	Bullseye,
+	Button,
+	Card,
+	CardBody,
+	CardHeader,
+	Gallery,
+	Grid,
+	GridItem,
+	Stack,
+	StackItem,
+	Content,
+	Title
+} from '@patternfly/react-core';
+import {
+	Modal
+} from '@patternfly/react-core/deprecated';
 import { Link } from "react-router-dom";
 
 import { api } from "../api";
@@ -26,7 +28,7 @@ import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
 import { StatusPill } from "../components/status-pill";
 import type { EnvironmentMutationPayload, EnvironmentSummary } from "../types";
-import { formatDateTime } from "../utils";
+import { deploymentTypeLabel, formatDateTime } from "../utils";
 
 function getServiceStatuses(summary: Record<string, unknown>): Array<{ service: string; health: string }> {
   const serviceSummaries = summary.service_summaries;
@@ -144,7 +146,7 @@ export function EnvironmentsPage() {
       </StackItem>
 
       <StackItem>
-        <Card isFlat>
+        <Card >
           <CardHeader>
             <Stack>
               <StackItem>
@@ -153,18 +155,18 @@ export function EnvironmentsPage() {
                 </Title>
               </StackItem>
               <StackItem>
-                <Text component="p" className="aam-muted">
+                <Content component="p" className="aam-muted">
                   Registration is intentionally focused. Use the environment detail view for advanced service path overrides, platform declarations, and direct actions.
-                </Text>
+                </Content>
               </StackItem>
             </Stack>
           </CardHeader>
           <CardBody>
             {loading ? (
               <Bullseye>
-                <Text component="p" className="aam-muted">
+                <Content component="p" className="aam-muted">
                   Loading environments...
-                </Text>
+                </Content>
               </Bullseye>
             ) : environments.length === 0 ? (
               <EmptyState
@@ -182,7 +184,7 @@ export function EnvironmentsPage() {
                   const serviceStatuses = getServiceStatuses(environment.summary);
 
                   return (
-                    <Card key={environment.id} isFlat isFullHeight>
+                    <Card key={environment.id}  isFullHeight>
                       <CardHeader>
                         <Stack hasGutter>
                           <StackItem>
@@ -193,9 +195,9 @@ export function EnvironmentsPage() {
                             </Link>
                           </StackItem>
                           <StackItem>
-                            <Text component="small" className="aam-muted">
+                            <Content component="small" className="aam-muted">
                               {environment.groupings.join(", ") || environment.slug}
-                            </Text>
+                            </Content>
                           </StackItem>
                         </Stack>
                       </CardHeader>
@@ -203,41 +205,47 @@ export function EnvironmentsPage() {
                         <Stack hasGutter>
                           <StackItem>
                             <Grid hasGutter>
-                              <GridItem md={4}>
-                                <Text component="small" className="aam-muted">
+                              <GridItem md={3}>
+                                <Content component="small" className="aam-muted">
                                   Status
-                                </Text>
+                                </Content>
                                 <div>
                                   <StatusPill status={environment.status} />
                                 </div>
                               </GridItem>
-                              <GridItem md={4}>
-                                <Text component="small" className="aam-muted">
+                              <GridItem md={3}>
+                                <Content component="small" className="aam-muted">
+                                  Infrastructure
+                                </Content>
+                                <div className="aam-deployment-badge">{deploymentTypeLabel(environment.deployment_type)}</div>
+                              </GridItem>
+                              <GridItem md={3}>
+                                <Content component="small" className="aam-muted">
                                   Version
-                                </Text>
+                                </Content>
                                 <div>{environment.platform_version ?? "Unknown"}</div>
                               </GridItem>
-                              <GridItem md={4}>
-                                <Text component="small" className="aam-muted">
+                              <GridItem md={3}>
+                                <Content component="small" className="aam-muted">
                                   Last sync
-                                </Text>
+                                </Content>
                                 <div>{formatDateTime(environment.last_synced_at)}</div>
                               </GridItem>
                             </Grid>
                           </StackItem>
                           <StackItem>
-                            <Text component="small" className="aam-muted">
+                            <Content component="small" className="aam-muted">
                               Service posture
-                            </Text>
+                            </Content>
                             {serviceStatuses.length === 0 ? (
                               <div className="aam-muted">No service data collected yet.</div>
                             ) : (
                               <div className="aam-link-cluster">
                                 {serviceStatuses.map((item) => (
                                   <div key={`${environment.id}-${item.service}`}>
-                                    <Text component="small" className="aam-muted">
+                                    <Content component="small" className="aam-muted">
                                       {item.service.toUpperCase()}
-                                    </Text>
+                                    </Content>
                                     <div>
                                       <StatusPill status={item.health} />
                                     </div>
@@ -247,9 +255,9 @@ export function EnvironmentsPage() {
                             )}
                           </StackItem>
                           <StackItem>
-                            <Text component="small" className="aam-muted">
+                            <Content component="small" className="aam-muted">
                               Health score
-                            </Text>
+                            </Content>
                             <div>{String(environment.summary.health_score ?? "n/a")}</div>
                           </StackItem>
                           <StackItem>
@@ -290,9 +298,9 @@ export function EnvironmentsPage() {
       >
         <Stack hasGutter>
           <StackItem>
-            <Text component="p" className="aam-muted">
+            <Content component="p" className="aam-muted">
               Start with the connection, sync cadence, and collector credentials. Deeper platform declarations stay available after the environment is created.
-            </Text>
+            </Content>
           </StackItem>
           <StackItem>
             <EnvironmentForm

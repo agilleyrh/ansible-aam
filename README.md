@@ -1,47 +1,45 @@
 # Advanced Automation Manager
 
-Advanced Automation Manager (AAM) is a centralized fleet-control hub for Red Hat Ansible Automation Platform (AAP). It is designed to give operators one place to register, observe, govern, search, and act on multiple AAP environments in the same way Red Hat Advanced Cluster Management centralizes OpenShift fleet operations.
+Advanced Automation Manager (AAM) is a centralized fleet-control hub for Red Hat Ansible Automation Platform (AAP). It gives operators one place to register, observe, govern, search, and act on multiple AAP environments—the same way Red Hat Advanced Cluster Management centralizes OpenShift fleet operations.
 
-The current implementation is not a placeholder UI. It includes a working backend API, background worker and scheduler, persistent PostgreSQL storage, Redis-backed sync dispatch, and a PatternFly React console for day-to-day platform operations.
+Managed environments can run anywhere AAP is deployed today:
+
+- RHEL hosts with containerized AAP via Podman
+- OpenShift clusters
+- Cloud estates on AWS, GCP, or Azure
+
+AAM itself can be deployed as a Podman multi-container stack on RHEL or as an OpenShift Operator-managed operand.
 
 ## What the project does
 
 AAM lets you:
 
-- Register multiple AAP environments through a focused modal flow that starts with the minimum required connection and credential data.
-- Store environment metadata, ownership, labels, tags, groups, credentials, and service path overrides.
+- Register multiple AAP environments with connection data, credentials, and **infrastructure footprint** (Podman / OpenShift / AWS / GCP / Azure).
 - Collect health and inventory from remote AAP services into one normalized hub.
 - Review a fleet dashboard with health, compliance, resource coverage, and platform interface adoption.
-- Review a dedicated fleet monitoring page that consolidates gateway, controller, EDA, and automation hub monitoring points and collection configuration across every registered environment.
-- Manage environment registration and edit structured capability declarations such as operator, Terraform, runner, receptor, content signing, Backstage, MCP, metrics, reports, and AI-assist expectations after the environment is created.
-- Search resources across every synced environment from one console.
-- Review topology relationships for services, resources, and declared platform integrations.
-- Evaluate governance policies and review compliance results.
-- Review a unified activity stream for syncs and operator actions.
-- Trigger supported remote actions such as launching controller templates and workflows, syncing controller projects, toggling EDA activations, and syncing automation hub repositories.
+- Review fleet monitoring across gateway, controller, EDA, and automation hub.
+- **Watch live controller jobs across the fleet**, review running/pending/failed pressure, and **cancel active jobs** from one console.
+- Search resources across every synced environment.
+- Review topology, governance policies, and a unified activity stream.
+- Trigger remote actions such as launching templates/workflows, syncing projects, toggling EDA activations, syncing hub repositories, and canceling jobs.
 
 ## Current stack
 
-- `backend/`: FastAPI API, SQLAlchemy models, Alembic migrations, queue worker, scheduler, policy engine, and service connectors.
-- `frontend/`: React 18 + Vite + PatternFly React 5 console.
-- `deploy/docker-compose.yml`: local/lab deployment for PostgreSQL, Redis, API, worker, scheduler, and UI.
+- `backend/`: FastAPI API, SQLAlchemy models, Alembic migrations, queue worker, scheduler, policy engine, and AAP connectors.
+- `frontend/`: React 18 + Vite + **PatternFly React 6** console.
+- `deploy/docker-compose.yml`: local/lab Docker Compose stack.
+- `deploy/podman/`: Podman Compose + Quadlet units for RHEL.
+- `deploy/operator/`: OpenShift Operator scaffold (`AAMInstance` CRD, RBAC, manager Deployment).
 - `docs/architecture.md`: product and integration design.
 
 ## Key capabilities in the current build
 
 - Fleet overview dashboard with high-level status, service health, compliance rollup, resource coverage, and interface adoption.
-- Dedicated fleet monitoring page with common AAP monitoring points, operational graphs, service readiness, and collection-configuration coverage.
-- Environment registry with modal registration, focused create flow, create/update/delete/sync actions, and clearer registry cards.
-- Environment detail page with:
-  - overview tab for endpoints, collection profile, and declared integrations
-  - monitoring tab for common monitoring points, service posture, and footprint graphs
-  - inventory tab for collected resources and direct actions
-  - settings tab for advanced registration fields and platform declarations
-- Governance page for policy definitions and evaluation results.
-- Fleet activity stream.
-- Cross-environment search.
-- Administration/runtime settings page.
-- Topology page for service and integration relationships.
+- Dedicated fleet monitoring page with common AAP monitoring points and collection-configuration coverage.
+- **Fleet jobs page** with live stats and cancel actions across environments.
+- Environment registry with modal registration, infrastructure type, create/update/delete/sync actions.
+- Environment detail page with overview, monitoring, inventory, and settings tabs.
+- Governance, activity, search, topology, and administration pages.
 
 ## Architecture summary
 
@@ -58,55 +56,32 @@ More detail is in [docs/architecture.md](docs/architecture.md).
 
 ## API surface
 
-The backend currently exposes endpoints for:
+The backend exposes endpoints for:
 
 - health checks
-- dashboard summaries
-- monitoring summaries
-- environment CRUD
-- environment sync requests
-- environment topology
-- policy definitions
-- policy results
-- search
-- sync execution history
-- unified activity stream
+- dashboard and monitoring summaries
+- environment CRUD (including `deployment_type` and `infrastructure`)
+- environment sync and topology
+- **fleet jobs and job stats**
+- policy definitions and results
+- search, sync history, activity stream
 - runtime settings
-- remote action execution
+- remote action execution (including `cancel_job`)
 
-The API is mounted at `/api/v1`, and Swagger UI is available at `/docs`.
-
-## UI design state
-
-The frontend now uses installed PatternFly React components directly instead of relying on custom HTML and class names to imitate PatternFly. PatternFly base CSS is imported from the local package, and the remaining custom CSS is limited to app-specific layout and visual adjustments.
-
-The information architecture is intentionally split by job:
-
-- `Overview` is the landing page for high-level fleet status.
-- `Monitoring` is the operational page for service posture, monitoring points, and graphs.
-- `Environments` is the registry and registration flow.
-- `Activity` is the fleet activity stream.
-- `Administration` is runtime configuration for the hub itself.
+The API is mounted at `/api/v1`. Swagger UI is available at `/docs`.
 
 ## Repository layout
 
 ```text
 .
 ├── backend/
-│   ├── alembic/
-│   ├── app/
-│   ├── Dockerfile
-│   └── pyproject.toml
 ├── deploy/
 │   ├── docker-compose.yml
-│   └── env/
+│   ├── env/
+│   ├── podman/
+│   └── operator/
 ├── docs/
-│   └── architecture.md
 ├── frontend/
-│   ├── src/
-│   ├── Dockerfile
-│   ├── package.json
-│   └── package-lock.json
 └── README.md
 ```
 
@@ -114,8 +89,8 @@ The information architecture is intentionally split by job:
 
 For container-first usage:
 
-- Docker Engine with Compose, or Podman with a Docker-compatible CLI/Compose setup
-- enough memory/CPU for PostgreSQL, Redis, FastAPI, worker, scheduler, and a Vite frontend build
+- Docker Engine with Compose, **or Podman** with a Docker-compatible CLI/Compose setup
+- enough memory/CPU for PostgreSQL, Redis, FastAPI, worker, scheduler, and UI
 
 For local non-container development:
 
@@ -127,35 +102,30 @@ For local non-container development:
 
 ## Quick start with containers
 
-Run these commands from the repository root:
+Docker:
 
 ```bash
 docker compose -f deploy/docker-compose.yml up --build -d
-docker compose -f deploy/docker-compose.yml ps
 ```
 
-Default service endpoints:
+Podman (RHEL):
+
+```bash
+podman compose -f deploy/podman/compose.yml up --build -d
+```
+
+Default endpoints:
 
 - UI: `http://127.0.0.1:8080`
 - API: `http://127.0.0.1:8000`
 - API docs: `http://127.0.0.1:8000/docs`
-- Health check: `http://127.0.0.1:8000/api/v1/healthz`
+- Health: `http://127.0.0.1:8000/api/v1/healthz`
 
-To stop the stack:
-
-```bash
-docker compose -f deploy/docker-compose.yml down
-```
-
-To stop the stack and remove the PostgreSQL volume:
-
-```bash
-docker compose -f deploy/docker-compose.yml down -v
-```
+See [deploy/podman/README.md](deploy/podman/README.md) and [deploy/operator/README.md](deploy/operator/README.md) for RHEL Quadlet and OpenShift Operator paths.
 
 ## Configuration
 
-The compose file currently points directly at [deploy/env/backend.env.example](deploy/env/backend.env.example).
+Compose uses [deploy/env/backend.env.example](deploy/env/backend.env.example).
 
 Important settings:
 
@@ -172,26 +142,17 @@ Important settings:
 
 Notes:
 
-- `AAM_CORS_ORIGINS` accepts either comma-separated values or a JSON array.
+- `AAM_CORS_ORIGINS` accepts comma-separated values or a JSON array.
 - In `development`, the API auto-creates tables on startup.
-- In `staging` and `production`, `create_all` is skipped and you should run Alembic migrations explicitly.
-- `AAM_SECRET_KEY` must be replaced with a strong random value outside development.
+- In `staging` / `production`, run Alembic migrations explicitly.
+- `AAM_SECRET_KEY` must be replaced outside development.
 
 ## Database migrations
-
-Alembic is included under [backend/alembic](backend/alembic).
-
-For staging/production-style runs:
 
 ```bash
 cd backend
 alembic upgrade head
 ```
-
-Current behavior:
-
-- `development`: automatic `create_all`
-- `staging` / `production`: run `alembic upgrade head`
 
 ## Local development without containers
 
@@ -201,37 +162,14 @@ Current behavior:
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install --upgrade pip
 pip install -e ".[dev]"
-```
-
-Set environment variables before running the API, worker, and scheduler. Example:
-
-```bash
-export AAM_ENVIRONMENT=development
-export AAM_DATABASE_URL=postgresql+psycopg://aam:aam@localhost:5432/aam
-export AAM_REDIS_URL=redis://localhost:6379/0
-export AAM_SECRET_KEY=replace-with-a-real-secret
-export AAM_CORS_ORIGINS=http://localhost:5173,http://localhost:8080
-export AAM_GATEWAY_TRUSTED_PROXY=true
-export AAM_ALLOW_DEV_BYPASS=true
-```
-
-Run the API:
-
-```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Run the worker in another shell:
+Worker / scheduler:
 
 ```bash
 python -m app.worker
-```
-
-Run the scheduler in another shell:
-
-```bash
 python -m app.scheduler
 ```
 
@@ -243,138 +181,30 @@ npm ci
 npm run dev
 ```
 
-The Vite dev server runs on `http://127.0.0.1:5173` by default.
-
-The frontend automatically injects trusted development headers when running under Vite dev mode. That is only for local development. In a real deployment, place the UI/API behind the AAP platform gateway or another trusted proxy that forwards identity and roles.
-
-## Build instructions for other systems
-
-### Container build
-
-Backend image:
-
-```bash
-docker build -t deploy-aam-api backend
-```
-
-Frontend image:
-
-```bash
-docker build -t deploy-aam-ui frontend
-```
-
-### Frontend build only
-
-If Node.js is installed locally:
-
-```bash
-cd frontend
-npm ci
-npm run build
-```
-
-If Node.js is not installed locally, you can still validate the frontend build with a disposable container:
-
-```bash
-docker run --rm -v "$PWD/frontend:/app" -w /app node:22-alpine npm ci
-docker run --rm -v "$PWD/frontend:/app" -w /app node:22-alpine npm run build
-```
-
-### Backend package install
-
-```bash
-cd backend
-pip install -e ".[dev]"
-```
-
-## Validation and test guidance
-
-There are currently no committed automated test files in this repository. At the moment, validation is build- and smoke-test-oriented.
-
-Recommended validation steps:
-
-### Frontend
-
-```bash
-cd frontend
-npm ci
-npm run build
-```
-
-### Backend
-
-```bash
-python3 -m compileall backend/app backend/alembic
-```
-
-### Full stack smoke test
-
-```bash
-docker compose -f deploy/docker-compose.yml up --build -d
-docker compose -f deploy/docker-compose.yml ps
-curl http://127.0.0.1:8000/api/v1/healthz
-curl -H 'X-RH-User: developer' -H 'X-RH-Roles: aam.admin' http://127.0.0.1:8000/api/v1/monitoring
-curl -I http://127.0.0.1:8080
-```
-
-The health response should look like:
-
-```json
-{"status":"ok","database":"ok","redis":"ok"}
-```
-
 ## First-run usage flow
 
-After the stack is up:
-
 1. Open the UI.
-2. Go to `Environments`.
-3. Click `Register environment` to open the modal registration flow.
-4. Register an AAP environment with at least a gateway URL plus valid collector credentials. Add controller, EDA, and hub URLs when those services should be monitored directly.
-5. Save the environment and queue a sync.
-6. Review `Monitoring` for the cross-environment operational view.
-7. Open the environment detail page to use the `Overview`, `Monitoring`, `Inventory`, and `Settings` tabs.
-8. Use `Activity`, `Governance`, `Search`, and `Topology` after collection completes.
+2. Go to **Environments** and register an AAP environment (gateway URL, credentials, and infrastructure type).
+3. Queue a sync.
+4. Review **Monitoring** and **Jobs** for operational posture and live job control.
+5. Open an environment detail page for inventory actions and settings.
 
-## Platform access and RBAC assumptions
+## Platform access and RBAC
 
-- Production deployments are expected to sit behind the AAP gateway or an equivalent trusted proxy.
-- The backend consumes trusted identity headers rather than owning a standalone user database.
-- The role model is aligned to:
-  - `aam.admin`
-  - `aam.operator`
-  - `aam.viewer`
-
-## Windows, WSL, and Podman notes
-
-If you run the stack inside WSL with rootless Podman and use the Docker-compatible CLI:
-
-- the app may be reachable inside WSL on `127.0.0.1`
-- Windows `127.0.0.1` may not forward automatically
-- you may need to open the UI and API using the current WSL IP instead
-
-To get the current WSL IP:
-
-```bash
-ip -4 addr show eth0
-```
-
-If Podman’s user socket is missing:
-
-```bash
-systemctl --user enable --now podman.socket
-```
-
-On Docker Desktop or a standard Linux Docker setup, plain `localhost` access is typically enough.
+- Production deployments sit behind the AAP gateway or an equivalent trusted proxy.
+- Roles: `aam.admin`, `aam.operator`, `aam.viewer`.
 
 ## Current limitations
 
 - No committed automated test suite yet.
-- The project currently assumes trusted-header authentication instead of shipping a standalone auth system.
-- The compose configuration is aimed at local/lab usage, not a hardened production deployment.
-- Rootless Podman under WSL may require using the WSL IP instead of Windows `localhost`.
+- Trusted-header authentication only (no standalone login UI).
+- Compose/Podman configs target lab usage; harden secrets and TLS for production.
+- OpenShift Operator scaffold provides CRD/RBAC/manager manifests; full reconciler packaging via Operator SDK is the next step.
+- Cloud/OpenShift/Podman are first-class **registration and labeling** dimensions today; deeper cloud-account or cluster-API integrations can be layered on next.
 
 ## Related documents
 
 - [docs/architecture.md](docs/architecture.md)
+- [deploy/podman/README.md](deploy/podman/README.md)
+- [deploy/operator/README.md](deploy/operator/README.md)
 - [backend/README.md](backend/README.md)

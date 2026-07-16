@@ -18,7 +18,7 @@ import {
   Label,
   Stack,
   StackItem,
-  Text,
+  Content,
   Title,
 } from "@patternfly/react-core";
 import { Link } from "react-router-dom";
@@ -55,16 +55,16 @@ function buildTree(nodes: TopologyNode[], edges: TopologyEdge[]): TreeNode[] {
 function TopologyNodeCard({ node }: { node: TreeNode }) {
   return (
     <div className="aam-topology-tree">
-      <Card className="aam-topology-node" data-kind={node.kind} isFlat>
+      <Card className="aam-topology-node" data-kind={node.kind} >
         <CardHeader>
           <Grid hasGutter style={{ width: "100%" }}>
             <GridItem md={8}>
               <Title headingLevel="h3" size="md">
                 {node.label}
               </Title>
-              <Text component="small" className="aam-muted">
+              <Content component="small" className="aam-muted">
                 {node.kind}
-              </Text>
+              </Content>
             </GridItem>
             <GridItem md={4} style={{ textAlign: "right" }}>
               <StatusPill status={node.status} />
@@ -84,9 +84,9 @@ function TopologyNodeCard({ node }: { node: TreeNode }) {
                 ))}
             </DescriptionList>
           ) : (
-            <Text component="small" className="aam-muted">
+            <Content component="small" className="aam-muted">
               No additional metadata declared.
-            </Text>
+            </Content>
           )}
         </CardBody>
       </Card>
@@ -111,7 +111,7 @@ function TopologyEdgeList({ edges, nodes }: { edges: TopologyEdge[]; nodes: Topo
     <ExpandableSection toggleText={`${edges.length} relationship${edges.length !== 1 ? "s" : ""}`}>
       <Stack hasGutter>
         {edges.map((edge, index) => (
-          <Card key={`${edge.source}-${edge.target}-${index}`} isFlat isCompact>
+          <Card key={`${edge.source}-${edge.target}-${index}`}  isCompact>
             <CardBody>
               <Grid hasGutter>
                 <GridItem md={5}>{nodeLabels.get(edge.source) ?? edge.source}</GridItem>
@@ -198,7 +198,7 @@ export function TopologyPage() {
 
       {environments.length === 0 ? (
         <StackItem>
-          <Card isFlat>
+          <Card >
             <CardBody>
               <EmptyState
                 title="No topology available yet"
@@ -215,14 +215,14 @@ export function TopologyPage() {
       ) : loading ? (
         <StackItem>
           <Bullseye>
-            <Card isFlat>
+            <Card >
               <CardBody>Loading topology...</CardBody>
             </Card>
           </Bullseye>
         </StackItem>
       ) : topology && topology.nodes.length === 0 ? (
         <StackItem>
-          <Card isFlat>
+          <Card >
             <CardBody>
               <EmptyState title="No topology data" description="Queue a sync for this environment to populate the topology graph." />
             </CardBody>
@@ -230,7 +230,7 @@ export function TopologyPage() {
         </StackItem>
       ) : (
         <StackItem>
-          <Card isFlat>
+          <Card >
             <CardHeader>
               <Stack>
                 <StackItem>
@@ -239,9 +239,9 @@ export function TopologyPage() {
                   </Title>
                 </StackItem>
                 <StackItem>
-                  <Text component="p" className="aam-muted">
+                  <Content component="p" className="aam-muted">
                     Nodes show the discovered and declared control-plane relationships for the selected environment.
-                  </Text>
+                  </Content>
                 </StackItem>
               </Stack>
             </CardHeader>
@@ -254,9 +254,9 @@ export function TopologyPage() {
                 ))}
                 {topology ? <TopologyEdgeList edges={topology.edges} nodes={topology.nodes} /> : null}
                 {selected ? (
-                  <Text component="small" className="aam-muted">
+                  <Content component="small" className="aam-muted">
                     Need the full configuration context? Open <Link to={`/environments/${selected}`}>the environment detail page</Link>.
-                  </Text>
+                  </Content>
                 ) : null}
               </Stack>
             </CardBody>

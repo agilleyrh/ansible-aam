@@ -14,7 +14,7 @@ import {
   Label,
   Stack,
   StackItem,
-  Text,
+  Content,
   Title,
 } from "@patternfly/react-core";
 
@@ -87,14 +87,14 @@ export function PoliciesPage() {
       {loading ? (
         <StackItem>
           <Bullseye>
-            <Card isFlat>
+            <Card >
               <CardBody>Loading policies...</CardBody>
             </Card>
           </Bullseye>
         </StackItem>
       ) : policies.length === 0 ? (
         <StackItem>
-          <Card isFlat>
+          <Card >
             <CardBody>
               <EmptyState
                 title="No governance policies available"
@@ -107,7 +107,7 @@ export function PoliciesPage() {
         <StackItem>
           <Gallery hasGutter minWidths={{ default: "320px" }}>
             {policies.map((policy) => (
-              <Card key={policy.id} isFlat isFullHeight>
+              <Card key={policy.id}  isFullHeight>
                 <CardHeader>
                   <Stack hasGutter>
                     <StackItem>
@@ -116,9 +116,9 @@ export function PoliciesPage() {
                       </Title>
                     </StackItem>
                     <StackItem>
-                      <Text component="p" className="aam-muted">
+                      <Content component="p" className="aam-muted">
                         {policy.description}
-                      </Text>
+                      </Content>
                     </StackItem>
                     <StackItem>
                       <Label color={severityColor(policy.severity)}>{policy.severity}</Label>
@@ -137,7 +137,7 @@ export function PoliciesPage() {
       )}
 
       <StackItem>
-        <Card isFlat>
+        <Card >
           <CardHeader>
             <Grid hasGutter style={{ width: "100%" }}>
               <GridItem md={8}>
@@ -148,9 +148,9 @@ export function PoliciesPage() {
                     </Title>
                   </StackItem>
                   <StackItem>
-                    <Text component="p" className="aam-muted">
+                    <Content component="p" className="aam-muted">
                       Recent compliance outcomes across every managed environment.
-                    </Text>
+                    </Content>
                   </StackItem>
                 </Stack>
               </GridItem>
@@ -163,9 +163,9 @@ export function PoliciesPage() {
           </CardHeader>
           <CardBody>
             {loading ? (
-              <Text component="p" className="aam-muted">
+              <Content component="p" className="aam-muted">
                 Loading results...
-              </Text>
+              </Content>
             ) : results.length === 0 ? (
               <EmptyState
                 title="No policy results yet"
@@ -176,33 +176,33 @@ export function PoliciesPage() {
                 {results.map((result) => {
                   const policy = policies.find((entry) => entry.id === result.policy_id);
                   return (
-                    <Card key={result.id} isFlat isCompact>
+                    <Card key={result.id}  isCompact>
                       <CardBody>
                         <Grid hasGutter>
                           <GridItem md={3}>
-                            <Text component="small" className="aam-muted">
+                            <Content component="small" className="aam-muted">
                               Policy
-                            </Text>
+                            </Content>
                             <div>{policy?.name ?? result.policy_id}</div>
                           </GridItem>
                           <GridItem md={2}>
-                            <Text component="small" className="aam-muted">
+                            <Content component="small" className="aam-muted">
                               Status
-                            </Text>
+                            </Content>
                             <div>
                               <StatusPill status={result.compliance} />
                             </div>
                           </GridItem>
                           <GridItem md={5}>
-                            <Text component="small" className="aam-muted">
+                            <Content component="small" className="aam-muted">
                               Message
-                            </Text>
+                            </Content>
                             <div>{result.message}</div>
                           </GridItem>
                           <GridItem md={2}>
-                            <Text component="small" className="aam-muted">
+                            <Content component="small" className="aam-muted">
                               Evaluated
-                            </Text>
+                            </Content>
                             <div>{formatDateTime(result.evaluated_at)}</div>
                           </GridItem>
                         </Grid>
