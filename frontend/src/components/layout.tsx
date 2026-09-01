@@ -4,7 +4,6 @@ import {
   CardHeader,
   Masthead,
   MastheadBrand,
-  MastheadContent,
   MastheadLogo,
   MastheadMain,
   Nav,
@@ -22,7 +21,6 @@ import {
 import { Link as RouterLink, Outlet, useLocation } from "react-router-dom";
 
 import { AnsibleLogo } from "./ansible-logo";
-import { LinkButton } from "./link-button";
 
 const links = [
   { to: "/", label: "Overview" },
@@ -33,13 +31,6 @@ const links = [
   { to: "/policies", label: "Governance" },
   { to: "/topology", label: "Topology" },
   { to: "/search", label: "Search" },
-  { to: "/settings", label: "Administration" },
-];
-
-const quickLinks = [
-  { to: "/jobs", label: "Fleet jobs" },
-  { to: "/monitoring", label: "Monitoring" },
-  { to: "/environments", label: "Environment registry" },
   { to: "/settings", label: "Administration" },
 ];
 
@@ -68,15 +59,6 @@ export function AppLayout() {
           </MastheadLogo>
         </MastheadBrand>
       </MastheadMain>
-      <MastheadContent>
-        <div className="aam-masthead-links">
-          {quickLinks.map((link) => (
-            <LinkButton key={link.to} to={link.to} variant={isActivePath(link.to) ? "primary" : "secondary"} size="sm">
-              {link.label}
-            </LinkButton>
-          ))}
-        </div>
-      </MastheadContent>
     </Masthead>
   );
 
