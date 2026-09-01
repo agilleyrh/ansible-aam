@@ -119,11 +119,21 @@ export type Policy = {
 export type PolicyResult = {
   id: string;
   environment_id: string;
+  environment_name?: string | null;
   policy_id: string;
   compliance: string;
   message: string;
   details: Record<string, unknown>;
   evaluated_at: string;
+};
+
+export type EnvironmentGroup = {
+  name: string;
+  environment_count: number;
+  healthy_count: number;
+  warning_count: number;
+  critical_count: number;
+  environments: EnvironmentSummary[];
 };
 
 export type SearchResult = {

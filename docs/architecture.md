@@ -29,7 +29,7 @@ Advanced Automation Manager is the fleet hub for Ansible Automation Platform. It
 | --- | --- |
 | Lab / Docker | `deploy/docker-compose.yml` |
 | RHEL / Podman | `deploy/podman/` (Compose + Quadlet) |
-| OpenShift | `deploy/operator/` (`AAMInstance` CRD + manager scaffold) |
+| OpenShift | `deploy/openshift/` (Kustomize + `deploy.sh` for CRC MicroShift) |
 
 ## Major services
 
@@ -112,5 +112,9 @@ Registration captures where an estate runs so the hub can filter and report cons
 - Add analytics ingestion from automation analytics or Event-Driven Ansible event streams.
 - Add push-mode collectors or sidecar agents for heavily firewalled environments.
 - Deepen OpenShift and cloud connectors beyond registration metadata (cluster API, cloud inventory).
-- Complete the Operator SDK reconciler and OLM bundle for production OpenShift installs.
+- Complete the Operator SDK reconciler and OLM bundle if OperatorHub packaging is required. The hub already installs with Kustomize on OpenShift and MicroShift.
+
+## Apple Silicon / CRC MicroShift
+
+CRC guests on Apple Silicon advertise SVE2 CPU features that the hypervisor does not implement. `cryptography` 47+ probes those features at import and the API/worker/scheduler die with SIGILL (exit 132). The backend image, OpenShift ConfigMap, and `app/__init__.py` set `OPENSSL_armcap=0` so OpenSSL uses portable code. That env var is a no-op on x86_64.
 - Add gateway-native role definitions when AAP exposes the necessary extension hooks for third-party services.

@@ -4,12 +4,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.routes import router
 from app.config import get_settings
 from app.database import SessionLocal, init_db
+from app.health import health_response
 from app.services.policies import seed_default_policies
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -17,12 +20,16 @@ logger = logging.getLogger(__name__)
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     logger.info("Starting %s in %s mode", settings.app_name, settings.environment)
-    init_db()
-    db = SessionLocal()
     try:
-        seed_default_policies(db)
-    finally:
-        db.close()
+        init_db(migrate=True)
+        db = SessionLocal()
+        try:
+            seed_default_policies(db)
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Application startup failed")
+        raise
     yield
 
 
@@ -39,3 +46,7 @@ app.add_middleware(
 
 app.include_router(router, prefix=settings.api_prefix)
 
+
+@app.get("/healthz")
+def root_healthcheck() -> JSONResponse:
+    return health_response()

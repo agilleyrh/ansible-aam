@@ -20,11 +20,11 @@ def run_search(db: Session, query: str) -> list[SearchResult]:
         .join(ManagedEnvironment, ManagedEnvironment.id == ManagedResource.environment_id)
         .where(
             or_(
-                ManagedResource.name.ilike(f"%{escaped}%"),
-                ManagedResource.resource_type.ilike(f"%{escaped}%"),
-                ManagedResource.service.ilike(f"%{escaped}%"),
-                ManagedResource.external_id.ilike(f"%{escaped}%"),
-                ManagedEnvironment.name.ilike(f"%{escaped}%"),
+                ManagedResource.name.ilike(f"%{escaped}%", escape="\\"),
+                ManagedResource.resource_type.ilike(f"%{escaped}%", escape="\\"),
+                ManagedResource.service.ilike(f"%{escaped}%", escape="\\"),
+                ManagedResource.external_id.ilike(f"%{escaped}%", escape="\\"),
+                ManagedEnvironment.name.ilike(f"%{escaped}%", escape="\\"),
             )
         )
         .order_by(ManagedEnvironment.name, ManagedResource.service, ManagedResource.name)

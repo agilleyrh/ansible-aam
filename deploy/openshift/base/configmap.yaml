@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aam
+data:
+  OPENSSL_armcap: "0"
+  AAM_ENVIRONMENT: development
+  AAM_API_PREFIX: /api/v1
+  AAM_REDIS_URL: redis://aam-redis:6379/0
+  AAM_CORS_ORIGINS: "*"
+  AAM_GATEWAY_TRUSTED_PROXY: "true"
+  AAM_ALLOW_DEV_BYPASS: "true"
+  AAM_AUTO_MIGRATE: "true"
+  AAM_DEFAULT_SYNC_INTERVAL_MINUTES: "5"
+  AAM_SYNC_JOB_TIMEOUT_MINUTES: "15"
+  AAM_SCHEDULER_INTERVAL_SECONDS: "60"

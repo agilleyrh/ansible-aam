@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aam-ui
+  labels:
+    app.kubernetes.io/name: aam-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aam-ui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aam-ui
+    spec:
+      serviceAccountName: aam
+      containers:
+        - name: ui
+          image: aam-ui:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: AAM_API_UPSTREAM
+              value: http://aam-api:8000
+            - name: AAM_DEFAULT_USER
+              value: developer
+            - name: AAM_DEFAULT_ROLES
+              value: aam.admin
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+      securityContext:
+        runAsNonRoot: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aam-ui
+  labels:
+    app.kubernetes.io/name: aam-ui
+spec:
+  selector:
+    app.kubernetes.io/name: aam-ui
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

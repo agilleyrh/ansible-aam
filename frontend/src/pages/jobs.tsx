@@ -76,6 +76,13 @@ export function JobsPage() {
       .finally(() => setLoading(false));
   }, [load]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      load().catch((err: Error) => setError(err.message));
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
   async function cancelJob(job: ControllerJob) {
     setCancelingId(`${job.environment_id}:${job.id}`);
     setError(null);

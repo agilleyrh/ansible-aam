@@ -131,7 +131,7 @@ function TopologyEdgeList({ edges, nodes }: { edges: TopologyEdge[]; nodes: Topo
 export function TopologyPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([]);
-  const [selected, setSelected] = useState(searchParams.get("environmentId") ?? "");
+  const [selected, setSelected] = useState(searchParams.get("environmentId") ?? "fleet");
   const [topology, setTopology] = useState<TopologyResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,13 +143,19 @@ export function TopologyPage() {
         setEnvironments(items);
         const requested = searchParams.get("environmentId");
         setSelected((current) => {
+          if (requested === "fleet") {
+            return "fleet";
+          }
           if (requested && items.some((item) => item.id === requested)) {
             return requested;
+          }
+          if (current === "fleet") {
+            return current;
           }
           if (current && items.some((item) => item.id === current)) {
             return current;
           }
-          return items[0]?.id ?? "";
+          return "fleet";
         });
       })
       .catch((err: Error) => setError(err.message));
@@ -172,8 +178,8 @@ export function TopologyPage() {
     const controller = new AbortController();
     setLoading(true);
     setTopology(null);
-    api
-      .topology(selected, controller.signal)
+    const loader = selected === "fleet" ? api.fleetTopology(controller.signal) : api.topology(selected, controller.signal);
+    loader
       .then(setTopology)
       .catch((err: Error) => {
         if (!controller.signal.aborted) {
@@ -204,6 +210,7 @@ export function TopologyPage() {
           actions={
             environments.length > 0 ? (
               <FormSelect value={selected} onChange={(_, value) => setSelected(value)} aria-label="Select environment topology">
+                <FormSelectOption value="fleet" label="Entire fleet" />
                 {environments.map((environment) => (
                   <FormSelectOption key={environment.id} value={environment.id} label={environment.name} />
                 ))}
@@ -252,12 +259,12 @@ export function TopologyPage() {
               <Stack>
                 <StackItem>
                   <Title headingLevel="h2" size="lg">
-                    Environment topology
+                    {selected === "fleet" ? "Fleet topology" : "Environment topology"}
                   </Title>
                 </StackItem>
                 <StackItem>
                   <Content component="p" className="aam-muted">
-                    Nodes show the discovered and declared control-plane relationships for the selected environment.
+                    Nodes show hub-to-environment relationships or the services collected for one AAP estate.
                   </Content>
                 </StackItem>
               </Stack>
@@ -270,7 +277,7 @@ export function TopologyPage() {
                   </StackItem>
                 ))}
                 {topology ? <TopologyEdgeList edges={topology.edges} nodes={topology.nodes} /> : null}
-                {selected ? (
+                {selected && selected !== "fleet" ? (
                   <Content component="small" className="aam-muted">
                     Need the full configuration context? Open <Link to={`/environments/${selected}`}>the environment detail page</Link>.
                   </Content>

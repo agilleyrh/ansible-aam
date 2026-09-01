@@ -1,0 +1,55 @@
+map $http_x_rh_user $aam_user {
+  "" "${AAM_DEFAULT_USER}";
+  default $http_x_rh_user;
+}
+
+map $http_x_rh_roles $aam_roles {
+  "" "${AAM_DEFAULT_ROLES}";
+  default $http_x_rh_roles;
+}
+
+server {
+  listen 8080;
+  server_name _;
+
+  root /usr/share/nginx/html;
+  index index.html;
+
+  location / {
+    try_files $uri /index.html;
+  }
+
+  location /api/ {
+    proxy_pass ${AAM_API_UPSTREAM}/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-RH-User $aam_user;
+    proxy_set_header X-RH-Roles $aam_roles;
+    proxy_set_header X-RH-Email $http_x_rh_email;
+    proxy_set_header X-RH-Identity $http_x_rh_identity;
+    proxy_read_timeout 120s;
+  }
+
+  location /docs {
+    proxy_pass ${AAM_API_UPSTREAM}/docs;
+    proxy_set_header Host $host;
+  }
+
+  location /openapi.json {
+    proxy_pass ${AAM_API_UPSTREAM}/openapi.json;
+    proxy_set_header Host $host;
+  }
+
+  location /redoc {
+    proxy_pass ${AAM_API_UPSTREAM}/redoc;
+    proxy_set_header Host $host;
+  }
+
+  location = /healthz {
+    access_log off;
+    add_header Content-Type text/plain;
+    return 200 "ok\n";
+  }
+}

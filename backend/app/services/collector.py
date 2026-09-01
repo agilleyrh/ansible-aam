@@ -37,7 +37,11 @@ def enqueue_sync(environment_id: str, requested_by: str = "system") -> str:
         logger.info("Sync already in progress for environment %s, skipping", environment_id)
         raise RuntimeError(f"A sync is already in progress for environment {environment_id}")
     timeout = f"{settings.sync_job_timeout_minutes}m"
-    job = sync_queue().enqueue(run_environment_sync, environment_id, requested_by, job_timeout=timeout)
+    try:
+        job = sync_queue().enqueue(run_environment_sync, environment_id, requested_by, job_timeout=timeout)
+    except Exception:
+        redis.delete(lock_key)
+        raise
     return job.id
 
 

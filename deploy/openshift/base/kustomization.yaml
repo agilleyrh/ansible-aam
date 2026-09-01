@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: aam
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: advanced-automation-manager
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - secret.yaml
+  - configmap.yaml
+  - postgres.yaml
+  - redis.yaml
+  - api.yaml
+  - worker.yaml
+  - scheduler.yaml
+  - ui.yaml
+  - route.yaml
+  - scc-binding.yaml

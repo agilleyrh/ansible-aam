@@ -193,18 +193,21 @@ export function DashboardPage() {
                   </CardHeader>
                   <CardBody>
                     <Stack hasGutter>
-                      {Object.entries(data.compliance).map(([key, value]) => (
+                      {Object.entries(data.compliance).map(([key, value]) => {
+                        const total = Object.values(data.compliance).reduce((sum, count) => sum + count, 0) || 1;
+                        return (
                         <StackItem key={key}>
                           <Progress
                             title={humanize(key)}
-                            value={Math.min(value * 18, 100)}
+                            value={(value / total) * 100}
                             measureLocation="outside"
                             label={String(value)}
-                            valueText={`${value} policy results`}
+                            valueText={`${value} of ${total} policy results`}
                             variant={getProgressVariant(key)}
                           />
                         </StackItem>
-                      ))}
+                        );
+                      })}
                     </Stack>
                   </CardBody>
                 </Card>

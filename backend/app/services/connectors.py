@@ -33,7 +33,7 @@ DEFAULT_SERVICE_PATHS: dict[str, dict[str, str]] = {
         "token": "/api/o/token/",
     },
     "eda": {
-        "rulebook_activations": "/api/eda/v1/rulebook_activations/",
+        "rulebook_activations": "/api/eda/v1/activations/",
         "projects": "/api/eda/v1/projects/",
         "decision_environments": "/api/eda/v1/decision-environments/",
     },
@@ -44,9 +44,27 @@ DEFAULT_SERVICE_PATHS: dict[str, dict[str, str]] = {
 }
 
 OAUTH2_TOKEN_CANDIDATE_PATHS = [
-    "/api/gateway/v1/tokens/",
     "/api/o/token/",
     "/o/token/",
+    "/api/gateway/v1/o/token/",
+]
+
+HUB_REPOSITORY_CANDIDATE_PATHS = [
+    "/api/galaxy/v3/repositories/",
+    "/api/galaxy/_ui/v1/execution-environments/repositories/",
+    "/api/automation-hub/v3/repositories/",
+]
+
+HUB_COLLECTION_CANDIDATE_PATHS = [
+    "/api/galaxy/v3/plugin/ansible/search/collection-versions/",
+    "/api/galaxy/v3/collections/",
+    "/api/automation-hub/v3/plugin/ansible/search/collection-versions/",
+]
+
+EDA_ACTIVATION_CANDIDATE_PATHS = [
+    "/api/eda/v1/activations/",
+    "/api/eda/v1/rulebook_activations/",
+    "/api/eda/v1/rulebook-activations/",
 ]
 
 
@@ -67,6 +85,20 @@ class AAPConnector:
         self._forwarded_headers = forwarded_headers or {}
         self._oauth2_token: str | None = None
         self.headers = self._build_headers()
+
+    def _component_url(self, service: str) -> str | None:
+        explicit = {
+            "gateway": self.environment.gateway_url,
+            "controller": self.environment.controller_url,
+            "eda": self.environment.eda_url,
+            "hub": self.environment.hub_url,
+        }.get(service)
+        if explicit:
+            return explicit
+        # AAP 2.5+ fronts controller, EDA, and hub on the platform gateway origin.
+        if service in {"controller", "eda", "hub"}:
+            return self.environment.gateway_url
+        return None
 
     def _build_headers(self) -> dict[str, str]:
         headers: dict[str, str] = {"Accept": "application/json"}
@@ -100,8 +132,15 @@ class AAPConnector:
         if not base_url:
             raise RuntimeError("No base URL available for OAuth2 token acquisition")
 
-        token_path_override = self.service_paths.get("gateway", {}).get("token") or self.service_paths.get("controller", {}).get("token")
-        candidate_paths = [token_path_override] if token_path_override else OAUTH2_TOKEN_CANDIDATE_PATHS
+        token_path_override = (
+            (self.environment.service_paths or {}).get("gateway", {}) or {}
+        ).get("token") or ((self.environment.service_paths or {}).get("controller", {}) or {}).get("token")
+        candidate_paths: list[str] = []
+        if isinstance(token_path_override, str) and token_path_override.strip():
+            candidate_paths.append(token_path_override.strip())
+        for path in OAUTH2_TOKEN_CANDIDATE_PATHS:
+            if path not in candidate_paths:
+                candidate_paths.append(path)
 
         last_error: Exception | None = None
         async with httpx.AsyncClient(
@@ -244,7 +283,7 @@ class AAPConnector:
         json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any] | list[Any]:
         return await self._request_json_candidates(
-            self.environment.controller_url,
+            self._component_url("controller"),
             self._controller_candidate_paths(path),
             method=method,
             params=params,
@@ -350,7 +389,15 @@ class AAPConnector:
         path = self.service_paths["gateway"].get("health")
         if not self.environment.gateway_url:
             return {"health": "not_configured"}, []
-        payload = await self._request_json(self.environment.gateway_url, path)
+        try:
+            payload = await self._request_json_candidates(
+                self.environment.gateway_url,
+                [path, "/api/gateway/v1/ping/", "/api/controller/v2/ping/", "/api/v2/ping/"],
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return {"health": "not_configured"}, []
+            raise
         summary = {
             "health": "healthy",
             "version": payload.get("version") if isinstance(payload, dict) else None,
@@ -359,7 +406,7 @@ class AAPConnector:
         return summary, []
 
     async def collect_controller(self) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        if not self.environment.controller_url:
+        if not self._component_url("controller"):
             return {"health": "not_configured"}, []
 
         paths = self.service_paths["controller"]
@@ -374,29 +421,30 @@ class AAPConnector:
         credential_path = paths.get("credentials")
         ee_path = paths.get("execution_environments")
 
-        (
-            ping,
-            job_count,
-            running_job_count,
-            pending_job_count,
-            waiting_job_count,
-            jt_count,
-            workflow_count,
-            inventory_count,
-            host_count,
-            org_count,
-            project_count,
-            credential_count,
-            execution_environment_count,
-            templates,
-            workflows,
-            inventories,
-            projects,
-            credentials,
-            execution_environments,
-            failed_jobs,
-            running_jobs,
-        ) = await asyncio.gather(
+        try:
+            (
+                ping,
+                job_count,
+                running_job_count,
+                pending_job_count,
+                waiting_job_count,
+                jt_count,
+                workflow_count,
+                inventory_count,
+                host_count,
+                org_count,
+                project_count,
+                credential_count,
+                execution_environment_count,
+                templates,
+                workflows,
+                inventories,
+                projects,
+                credentials,
+                execution_environments,
+                failed_jobs,
+                running_jobs,
+            ) = await asyncio.gather(
             self._controller_request_json(ping_path),
             self._controller_count(jobs_path),
             self._controller_count(jobs_path, params={"status": "running"}),
@@ -418,7 +466,11 @@ class AAPConnector:
             self._controller_results(ee_path, limit=6),
             self._controller_results(jobs_path, params={"status": "failed", "order_by": "-finished"}, limit=5),
             self._controller_results(jobs_path, params={"status": "running", "order_by": "-started"}, limit=8),
-        )
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return {"health": "not_configured"}, []
+            raise
 
         resources = list(self._resource_records("controller", "job_template", templates))
         resources.extend(self._resource_records("controller", "workflow_job_template", workflows))
@@ -461,7 +513,7 @@ class AAPConnector:
         status: str | None | tuple[str, ...] = None,
         limit: int = 25,
     ) -> list[dict[str, Any]]:
-        if not self.environment.controller_url:
+        if not self._component_url("controller"):
             return []
         jobs_path = self.service_paths["controller"]["jobs"]
 
@@ -495,7 +547,7 @@ class AAPConnector:
         return await self._controller_results(jobs_path, params=params, limit=limit)
 
     async def get_job_status_counts(self) -> dict[str, int]:
-        if not self.environment.controller_url:
+        if not self._component_url("controller"):
             return {}
         jobs_path = self.service_paths["controller"]["jobs"]
         statuses = ("running", "pending", "waiting", "failed", "successful", "canceled", "error")
@@ -505,20 +557,45 @@ class AAPConnector:
         return {status: count for status, count in zip(statuses, counts, strict=True)}
 
     async def collect_eda(self) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        if not self.environment.eda_url:
+        base_url = self._component_url("eda")
+        if not base_url:
             return {"health": "not_configured"}, []
 
         paths = self.service_paths["eda"]
-        activation_count, project_count, de_count, activations, projects = await asyncio.gather(
-            self._count(self.environment.eda_url, paths.get("rulebook_activations")),
-            self._count(self.environment.eda_url, paths.get("projects")),
-            self._count(self.environment.eda_url, paths.get("decision_environments")),
-            self._results(self.environment.eda_url, paths.get("rulebook_activations"), limit=8),
-            self._results(self.environment.eda_url, paths.get("projects"), limit=6),
-        )
+        activation_paths = [
+            path
+            for path in [paths.get("rulebook_activations"), *EDA_ACTIVATION_CANDIDATE_PATHS]
+            if path
+        ]
+        # Preserve order while dropping duplicates.
+        deduped_activation_paths: list[str] = []
+        for path in activation_paths:
+            if path not in deduped_activation_paths:
+                deduped_activation_paths.append(path)
+        try:
+            activation_payload, project_count, de_count, project_items = await asyncio.gather(
+                self._request_json_candidates(base_url, deduped_activation_paths, params={"page_size": 8}),
+                self._count(base_url, paths.get("projects")),
+                self._count(base_url, paths.get("decision_environments")),
+                self._results(base_url, paths.get("projects"), limit=6),
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return {"health": "not_configured"}, []
+            raise
+
+        if isinstance(activation_payload, dict) and "results" in activation_payload:
+            activations = [item for item in activation_payload["results"] if isinstance(item, dict)]
+            activation_count = int(activation_payload.get("count") or len(activations))
+        elif isinstance(activation_payload, list):
+            activations = [item for item in activation_payload if isinstance(item, dict)]
+            activation_count = len(activations)
+        else:
+            activations = []
+            activation_count = 0
 
         resources = list(self._resource_records("eda", "activation", activations))
-        resources.extend(self._resource_records("eda", "project", projects))
+        resources.extend(self._resource_records("eda", "project", project_items))
 
         disabled = sum(1 for activation in activations if not activation.get("is_enabled", activation.get("enabled", True)))
         summary = {
@@ -531,16 +608,45 @@ class AAPConnector:
         return summary, resources
 
     async def collect_hub(self) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        if not self.environment.hub_url:
+        base_url = self._component_url("hub")
+        if not base_url:
             return {"health": "not_configured"}, []
 
         paths = self.service_paths["hub"]
-        repo_count, collection_count, repos, collections = await asyncio.gather(
-            self._count(self.environment.hub_url, paths.get("repositories")),
-            self._count(self.environment.hub_url, paths.get("collections")),
-            self._results(self.environment.hub_url, paths.get("repositories"), limit=8),
-            self._results(self.environment.hub_url, paths.get("collections"), limit=8),
-        )
+        repository_paths = [paths.get("repositories"), *HUB_REPOSITORY_CANDIDATE_PATHS]
+        collection_paths = [paths.get("collections"), *HUB_COLLECTION_CANDIDATE_PATHS]
+        try:
+            repo_payload, collection_payload = await asyncio.gather(
+                self._request_json_candidates(base_url, [path for path in repository_paths if path], params={"page_size": 8}),
+                self._request_json_candidates(base_url, [path for path in collection_paths if path], params={"page_size": 8}),
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return {"health": "not_configured"}, []
+            raise
+
+        def _items(payload: dict[str, Any] | list[Any], *, limit: int) -> list[dict[str, Any]]:
+            if isinstance(payload, dict) and "results" in payload:
+                return [item for item in payload["results"] if isinstance(item, dict)][:limit]
+            if isinstance(payload, dict) and "data" in payload:
+                return [item for item in payload["data"] if isinstance(item, dict)][:limit]
+            if isinstance(payload, list):
+                return [item for item in payload if isinstance(item, dict)][:limit]
+            return []
+
+        def _count_of(payload: dict[str, Any] | list[Any]) -> int:
+            if isinstance(payload, dict) and "count" in payload:
+                return int(payload["count"] or 0)
+            if isinstance(payload, dict) and "meta" in payload and isinstance(payload["meta"], dict):
+                return int(payload["meta"].get("count") or 0)
+            if isinstance(payload, list):
+                return len(payload)
+            return 0
+
+        repos = _items(repo_payload, limit=8)
+        collections = _items(collection_payload, limit=8)
+        repo_count = _count_of(repo_payload)
+        collection_count = _count_of(collection_payload)
 
         resources = list(self._resource_records("hub", "repository", repos))
         resources.extend(self._resource_records("hub", "collection", collections))
@@ -624,9 +730,13 @@ class AAPConnector:
             )
         elif action == "set_activation_state":
             service = "eda"
-            response = await self._request_json(
-                self.environment.eda_url,
-                path_override or f"/api/eda/v1/rulebook_activations/{target_id}/",
+            response = await self._request_json_candidates(
+                self._component_url("eda"),
+                [
+                    path_override,
+                    f"/api/eda/v1/activations/{target_id}/",
+                    f"/api/eda/v1/rulebook_activations/{target_id}/",
+                ],
                 method="PATCH",
                 json_body={"is_enabled": payload.get("enabled", True)},
             )
@@ -639,11 +749,16 @@ class AAPConnector:
             )
         elif action == "sync_repository":
             service = "hub"
-            response = await self._request_json(
-                self.environment.hub_url,
-                path_override or f"/api/automation-hub/_ui/v1/repositories/{target_id}/sync/",
+            response = await self._request_json_candidates(
+                self._component_url("hub"),
+                [
+                    path_override,
+                    f"/api/galaxy/_ui/v1/execution-environments/repositories/{target_id}/sync/",
+                    f"/api/automation-hub/_ui/v1/repositories/{target_id}/sync/",
+                    f"/api/galaxy/v3/plugin/ansible/content/published/sync/",
+                ],
                 method="POST",
-                json_body=payload,
+                json_body=payload or None,
             )
         else:
             raise RuntimeError(f"Unsupported action: {action}")

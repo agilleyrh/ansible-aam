@@ -139,6 +139,15 @@ class PolicyCreate(BaseModel):
     rule: dict[str, Any] = Field(default_factory=dict)
 
 
+class PolicyUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    severity: Literal["low", "medium", "high", "critical"] | None = None
+    enabled: bool | None = None
+    scope: dict[str, Any] | None = None
+    rule: dict[str, Any] | None = None
+
+
 class PolicyResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -156,6 +165,7 @@ class PolicyResultResponse(BaseModel):
 
     id: str
     environment_id: str
+    environment_name: str | None = None
     policy_id: str
     compliance: str
     message: str
@@ -219,6 +229,15 @@ class TopologyEdge(BaseModel):
 class TopologyResponse(BaseModel):
     nodes: list[TopologyNode]
     edges: list[TopologyEdge]
+
+
+class EnvironmentGroupResponse(BaseModel):
+    name: str
+    environment_count: int
+    healthy_count: int = 0
+    warning_count: int = 0
+    critical_count: int = 0
+    environments: list[EnvironmentSummary] = Field(default_factory=list)
 
 
 class SearchResult(BaseModel):

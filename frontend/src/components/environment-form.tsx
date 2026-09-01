@@ -507,7 +507,7 @@ export function EnvironmentForm({
 
         <FormSection
           title="Service endpoints"
-          description="Register the platform gateway first, then add controller, EDA, and automation hub endpoints when they should be monitored directly."
+          description="On Ansible Automation Platform 2.5 and later, the platform gateway fronts controller, EDA, and automation hub on the same URL. Set the gateway URL and leave the others blank unless a component is truly on a different host. If AAM and AAP share an OpenShift cluster, prefer the in-cluster Service URL (for example http://aap.aap-operator.svc) — CRC/MicroShift pods cannot resolve *.apps.crc.testing unless the deploy script injects router host aliases."
         >
           <Grid hasGutter>
             <GridItem md={6}>
@@ -516,7 +516,7 @@ export function EnvironmentForm({
                   id={`${fieldPrefix}-gateway-url`}
                   value={form.gateway_url}
                   onChange={(_, value) => updateField("gateway_url", value)}
-                  placeholder="https://aap.example.com"
+                  placeholder="https://aap.example.com or http://aap.aap-operator.svc"
                 />
               </FormGroup>
             </GridItem>
@@ -536,7 +536,7 @@ export function EnvironmentForm({
                   id={`${fieldPrefix}-controller-url`}
                   value={form.controller_url}
                   onChange={(_, value) => updateField("controller_url", value)}
-                  placeholder="https://controller.example.com"
+                  placeholder="Leave blank to use the gateway URL"
                 />
               </FormGroup>
             </GridItem>
@@ -546,7 +546,7 @@ export function EnvironmentForm({
                   id={`${fieldPrefix}-eda-url`}
                   value={form.eda_url}
                   onChange={(_, value) => updateField("eda_url", value)}
-                  placeholder="https://eda.example.com"
+                  placeholder="Leave blank to use the gateway URL"
                 />
               </FormGroup>
             </GridItem>
@@ -556,7 +556,7 @@ export function EnvironmentForm({
                   id={`${fieldPrefix}-hub-url`}
                   value={form.hub_url}
                   onChange={(_, value) => updateField("hub_url", value)}
-                  placeholder="https://hub.example.com"
+                  placeholder="Leave blank to use the gateway URL"
                 />
               </FormGroup>
             </GridItem>

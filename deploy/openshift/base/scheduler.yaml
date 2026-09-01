@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aam-scheduler
+  labels:
+    app.kubernetes.io/name: aam-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aam-scheduler
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aam-scheduler
+    spec:
+      serviceAccountName: aam
+      containers:
+        - name: scheduler
+          image: aam-api:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "app.scheduler"]
+          envFrom:
+            - configMapRef:
+                name: aam
+          env:
+            - name: AAM_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: aam
+                  key: database-url
+            - name: AAM_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aam
+                  key: secret-key
+          resources:
+            requests:
+              cpu: 25m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+      securityContext:
+        runAsNonRoot: true

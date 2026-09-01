@@ -27,9 +27,9 @@ async def _stats_for_environment(environment: ManagedEnvironment) -> Environment
         environment_name=environment.name,
         deployment_type=environment.deployment_type or "podman",
         status=environment.status,
-        controller_configured=bool(environment.controller_url),
+        controller_configured=bool(environment.controller_url or environment.gateway_url),
     )
-    if not environment.controller_url:
+    if not environment.controller_url and not environment.gateway_url:
         return base
 
     try:
@@ -74,7 +74,7 @@ async def _jobs_for_environment(
     status: str | None | tuple[str, ...],
     limit: int,
 ) -> list[ControllerJob]:
-    if not environment.controller_url:
+    if not environment.controller_url and not environment.gateway_url:
         return []
 
     try:
