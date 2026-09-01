@@ -4,6 +4,7 @@ import {
   CardHeader,
   Masthead,
   MastheadBrand,
+  MastheadContent,
   MastheadLogo,
   MastheadMain,
   Nav,
@@ -21,6 +22,7 @@ import {
 import { Link as RouterLink, Outlet, useLocation } from "react-router-dom";
 
 import { AnsibleLogo } from "./ansible-logo";
+import { ColorModeToggle } from "./color-mode-toggle";
 
 const links = [
   { to: "/", label: "Overview" },
@@ -59,6 +61,11 @@ export function AppLayout() {
           </MastheadLogo>
         </MastheadBrand>
       </MastheadMain>
+      <MastheadContent>
+        <div className="aam-masthead-actions">
+          <ColorModeToggle />
+        </div>
+      </MastheadContent>
     </Masthead>
   );
 

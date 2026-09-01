@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ManagedEnvironment, PolicyDefinition, PolicyResult
+from app.services.platform_config import controller_config, eda_config
 
 
 DEFAULT_POLICIES = [
@@ -80,6 +81,48 @@ DEFAULT_POLICIES = [
         "severity": "low",
         "scope": {"capability": "mcp_expected"},
         "rule": {"type": "capability_present", "capability": "mcp_endpoint"},
+    },
+    {
+        "name": "Activity stream enabled",
+        "description": "Controller activity stream should stay enabled so fleet audit history is complete.",
+        "severity": "medium",
+        "rule": {"type": "controller_setting", "key": "ACTIVITY_STREAM_ENABLED", "value": True, "remediate": True},
+    },
+    {
+        "name": "Galaxy TLS verification",
+        "description": "Controllers should verify TLS when pulling collections from automation hub or Galaxy.",
+        "severity": "high",
+        "rule": {"type": "controller_setting", "key": "GALAXY_IGNORE_CERTS", "value": False, "remediate": True},
+    },
+    {
+        "name": "Insights tracking enabled",
+        "description": "Red Hat Insights / automation analytics gathering should be enabled consistently.",
+        "severity": "medium",
+        "rule": {"type": "controller_setting", "key": "INSIGHTS_TRACKING_STATE", "value": True, "remediate": True},
+    },
+    {
+        "name": "Organization admins see all users",
+        "description": "ORG_ADMINS_CAN_SEE_ALL_USERS should match across the fleet.",
+        "severity": "low",
+        "rule": {"type": "controller_setting", "key": "ORG_ADMINS_CAN_SEE_ALL_USERS", "value": True, "remediate": True},
+    },
+    {
+        "name": "OAuth2 for external users",
+        "description": "Gateway-authenticated estates should allow OAuth2 tokens for external users.",
+        "severity": "medium",
+        "rule": {"type": "controller_setting", "key": "ALLOW_OAUTH2_FOR_EXTERNAL_USERS", "value": True, "remediate": True},
+    },
+    {
+        "name": "Default organization present",
+        "description": "Every controller should retain the Default organization used by standard AAP installs.",
+        "severity": "high",
+        "rule": {
+            "type": "named_resource_present",
+            "resource_type": "organization",
+            "name": "Default",
+            "remediate": True,
+            "create": {"name": "Default", "description": "Default"},
+        },
     },
 ]
 
@@ -199,7 +242,75 @@ def _evaluate_rule(policy: PolicyDefinition, environment: ManagedEnvironment) ->
             return "compliant", "All component endpoints route through the gateway host boundary", {"gateway_host": gateway_host}
         return "noncompliant", "One or more component endpoints bypass the gateway host boundary", {"gateway_host": gateway_host, "mismatches": mismatches}
 
+    if rule_type == "controller_setting":
+        key = str(rule.get("key") or "").strip()
+        desired = rule.get("value")
+        settings = controller_config(environment).get("settings") or {}
+        if not key:
+            return "unknown", "Policy does not name a controller setting", {}
+        if key not in settings:
+            return "unknown", f"Setting {key} was not returned by the controller", {"key": key}
+        actual = settings.get(key)
+        if _values_equal(actual, desired):
+            return "compliant", f"{key} is {actual!r}", {"key": key, "value": actual, "desired": desired}
+        return "noncompliant", f"{key} is {actual!r}, expected {desired!r}", {"key": key, "value": actual, "desired": desired}
+
+    if rule_type == "named_resource_present":
+        resource_type = str(rule.get("resource_type") or "").strip()
+        name = str(rule.get("name") or "").strip()
+        names = _resource_names(environment, resource_type)
+        if not name:
+            return "unknown", "Policy does not name a resource", {"resource_type": resource_type}
+        if not names and not controller_config(environment) and resource_type != "decision_environment":
+            return "unknown", f"No {resource_type} inventory was returned by the controller", {"resource_type": resource_type}
+        if name in names:
+            return "compliant", f"{resource_type} {name} is present", {"resource_type": resource_type, "name": name}
+        return "noncompliant", f"{resource_type} {name} is missing", {"resource_type": resource_type, "name": name, "present": sorted(names)}
+
     return "unknown", "Policy rule type is not recognized", {"rule_type": rule_type}
+
+
+def _values_equal(left: Any, right: Any) -> bool:
+    if left == right:
+        return True
+    left_s = str(left).lower()
+    right_s = str(right).lower()
+    truthy = {"true", "1", "yes"}
+    falsy = {"false", "0", "no"}
+    if left_s in truthy and right_s in truthy:
+        return True
+    if left_s in falsy and right_s in falsy:
+        return True
+    try:
+        if not isinstance(left, bool) and not isinstance(right, bool) and float(left) == float(right):
+            return True
+    except (TypeError, ValueError):
+        pass
+    return left_s == right_s
+
+
+def _resource_names(environment: ManagedEnvironment, resource_type: str) -> set[str]:
+    if resource_type == "organization":
+        return {str(name) for name in controller_config(environment).get("organizations") or [] if name}
+    if resource_type == "execution_environment":
+        names: set[str] = set()
+        for item in controller_config(environment).get("execution_environments") or []:
+            if isinstance(item, dict) and item.get("name"):
+                names.add(str(item["name"]))
+            elif isinstance(item, str) and item.strip():
+                names.add(item)
+        return names
+    if resource_type == "instance_group":
+        return {str(name) for name in controller_config(environment).get("instance_groups") or [] if name}
+    if resource_type == "decision_environment":
+        return {str(name) for name in eda_config(environment).get("decision_environments") or [] if name}
+    return set()
+
+
+def is_remediable(rule: dict[str, Any] | None) -> bool:
+    if not isinstance(rule, dict) or not rule.get("remediate"):
+        return False
+    return rule.get("type") in {"controller_setting", "named_resource_present"}
 
 
 def evaluate_policies(db: Session, environment: ManagedEnvironment, *, policy_id: str | None = None) -> None:
@@ -231,45 +342,75 @@ def evaluate_policies(db: Session, environment: ManagedEnvironment, *, policy_id
         result.evaluated_at = datetime.now(timezone.utc)
 
 
-def evaluate_fleet(db: Session, *, policy_id: str | None = None) -> dict[str, int]:
+def evaluate_fleet(db: Session, *, policy_id: str | None = None) -> dict[str, Any]:
     """Evaluate enabled policies against every registered environment and persist results."""
-    environments = db.scalars(select(ManagedEnvironment)).all()
+    environments = db.scalars(select(ManagedEnvironment).order_by(ManagedEnvironment.name)).all()
     statement = select(PolicyDefinition).where(PolicyDefinition.enabled.is_(True))
     if policy_id:
         statement = statement.where(PolicyDefinition.id == policy_id)
     policies = list(db.scalars(statement).all())
 
-    counts = {
+    counts: dict[str, Any] = {
         "evaluated": 0,
         "compliant": 0,
         "noncompliant": 0,
         "unknown": 0,
         "skipped": 0,
         "environments": len(environments),
+        "checks": [],
     }
     if not policies or not environments:
         return counts
 
+    checks: list[dict[str, str]] = []
     for environment in environments:
         matched = False
+        messages: list[str] = []
+        worst = "skipped"
         for policy in policies:
             if not _scope_matches(policy, environment):
                 continue
             matched = True
             evaluate_policies(db, environment, policy_id=policy.id)
+            db.flush()
+            result = db.scalars(
+                select(PolicyResult).where(
+                    PolicyResult.environment_id == environment.id,
+                    PolicyResult.policy_id == policy.id,
+                )
+            ).one_or_none()
+            compliance = result.compliance if result else "unknown"
+            message = result.message if result else "No result recorded"
+            messages.append(message if len(policies) == 1 else f"{policy.name}: {message}")
+            worst = _worse_compliance(worst, compliance)
+            if compliance in counts:
+                counts[compliance] += 1
         if matched:
             counts["evaluated"] += 1
+            checks.append(
+                {
+                    "environment_id": environment.id,
+                    "environment_name": environment.name,
+                    "compliance": worst if worst != "skipped" else "unknown",
+                    "message": "; ".join(messages) if messages else "Checked",
+                }
+            )
         else:
             counts["skipped"] += 1
+            checks.append(
+                {
+                    "environment_id": environment.id,
+                    "environment_name": environment.name,
+                    "compliance": "skipped",
+                    "message": "Environment is outside this policy's scope",
+                }
+            )
 
-    policy_ids = [policy.id for policy in policies]
-    environment_ids = [environment.id for environment in environments]
-    result_statement = select(PolicyResult).where(
-        PolicyResult.policy_id.in_(policy_ids),
-        PolicyResult.environment_id.in_(environment_ids),
-    )
-    for result in db.scalars(result_statement):
-        if result.compliance in counts:
-            counts[result.compliance] += 1
+    counts["checks"] = checks
     db.commit()
     return counts
+
+
+def _worse_compliance(current: str, incoming: str) -> str:
+    rank = {"skipped": 0, "compliant": 1, "unknown": 2, "noncompliant": 3}
+    return incoming if rank.get(incoming, 0) >= rank.get(current, 0) else current
