@@ -21,6 +21,7 @@ import {
 } from "@patternfly/react-core";
 import { Link as RouterLink, Outlet, useLocation } from "react-router-dom";
 
+import { AnsibleLogo } from "./ansible-logo";
 import { LinkButton } from "./link-button";
 
 const links = [
@@ -55,12 +56,11 @@ export function AppLayout() {
         <MastheadBrand>
           <MastheadLogo component={(props) => <RouterLink {...props} to="/" />}>
             <div className="aam-brand">
-              <div className="aam-brand__mark">A</div>
+              <div className="aam-brand__mark">
+                <AnsibleLogo />
+              </div>
               <div>
-                <Content component="small" className="aam-brand__eyebrow">
-                  Red Hat Ansible Automation Platform
-                </Content>
-                <Title headingLevel="h1" size="lg" className="aam-brand__title">
+                <Title headingLevel="h1" size="md" className="aam-brand__title">
                   Advanced Automation Manager
                 </Title>
               </div>

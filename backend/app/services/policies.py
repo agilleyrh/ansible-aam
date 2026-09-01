@@ -202,14 +202,21 @@ def _evaluate_rule(policy: PolicyDefinition, environment: ManagedEnvironment) ->
     return "unknown", "Policy rule type is not recognized", {"rule_type": rule_type}
 
 
-def evaluate_policies(db: Session, environment: ManagedEnvironment) -> None:
-    policies = db.scalars(select(PolicyDefinition).where(PolicyDefinition.enabled.is_(True))).all()
+def evaluate_policies(db: Session, environment: ManagedEnvironment, *, policy_id: str | None = None) -> None:
+    statement = select(PolicyDefinition)
+    if policy_id:
+        statement = statement.where(PolicyDefinition.id == policy_id)
+    else:
+        statement = statement.where(PolicyDefinition.enabled.is_(True))
+    policies = db.scalars(statement).all()
     existing_results = {
         result.policy_id: result
         for result in db.scalars(select(PolicyResult).where(PolicyResult.environment_id == environment.id)).all()
     }
 
     for policy in policies:
+        if not policy.enabled:
+            continue
         if not _scope_matches(policy, environment):
             continue
 
@@ -222,3 +229,47 @@ def evaluate_policies(db: Session, environment: ManagedEnvironment) -> None:
         result.message = message
         result.details = details
         result.evaluated_at = datetime.now(timezone.utc)
+
+
+def evaluate_fleet(db: Session, *, policy_id: str | None = None) -> dict[str, int]:
+    """Evaluate enabled policies against every registered environment and persist results."""
+    environments = db.scalars(select(ManagedEnvironment)).all()
+    statement = select(PolicyDefinition).where(PolicyDefinition.enabled.is_(True))
+    if policy_id:
+        statement = statement.where(PolicyDefinition.id == policy_id)
+    policies = list(db.scalars(statement).all())
+
+    counts = {
+        "evaluated": 0,
+        "compliant": 0,
+        "noncompliant": 0,
+        "unknown": 0,
+        "skipped": 0,
+        "environments": len(environments),
+    }
+    if not policies or not environments:
+        return counts
+
+    for environment in environments:
+        matched = False
+        for policy in policies:
+            if not _scope_matches(policy, environment):
+                continue
+            matched = True
+            evaluate_policies(db, environment, policy_id=policy.id)
+        if matched:
+            counts["evaluated"] += 1
+        else:
+            counts["skipped"] += 1
+
+    policy_ids = [policy.id for policy in policies]
+    environment_ids = [environment.id for environment in environments]
+    result_statement = select(PolicyResult).where(
+        PolicyResult.policy_id.in_(policy_ids),
+        PolicyResult.environment_id.in_(environment_ids),
+    )
+    for result in db.scalars(result_statement):
+        if result.compliance in counts:
+            counts[result.compliance] += 1
+    db.commit()
+    return counts

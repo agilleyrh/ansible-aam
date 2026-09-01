@@ -137,6 +137,7 @@ class PolicyCreate(BaseModel):
     enabled: bool = True
     scope: dict[str, Any] = Field(default_factory=dict)
     rule: dict[str, Any] = Field(default_factory=dict)
+    push_to_fleet: bool = True
 
 
 class PolicyUpdate(BaseModel):
@@ -158,6 +159,16 @@ class PolicyResponse(BaseModel):
     enabled: bool
     scope: dict[str, Any]
     rule: dict[str, Any]
+
+
+class PolicyPushResponse(BaseModel):
+    policy_id: str
+    evaluated: int
+    compliant: int
+    noncompliant: int
+    unknown: int
+    skipped: int
+    environments: int
 
 
 class PolicyResultResponse(BaseModel):

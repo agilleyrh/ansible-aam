@@ -52,33 +52,85 @@ a {
 .aam-brand {
   display: flex;
   align-items: center;
-  gap: var(--pf-t--global--spacer--md);
+  gap: var(--pf-t--global--spacer--sm);
 }
 
 .aam-brand__mark {
   display: grid;
   place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: var(--pf-t--global--border--radius--small);
-  background: linear-gradient(135deg, #ee0000, #c9190b);
-  color: var(--pf-t--global--text--color--on-dark);
-  font-size: var(--pf-t--global--font--size--xl);
-  font-weight: var(--pf-t--global--font--weight--heading--bold);
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 2.25rem;
+  border-radius: 50%;
+  overflow: hidden;
+  background: transparent;
 }
 
-.aam-brand__eyebrow {
-  margin: 0 0 var(--pf-t--global--spacer--xs);
-  color: var(--pf-t--global--text--color--on-dark--secondary, rgba(255, 255, 255, 0.75));
-  font-size: var(--pf-t--global--font--size--xs);
-  font-weight: var(--pf-t--global--font--weight--body--bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.aam-ansible-logo {
+  display: block;
+  width: 2.25rem;
+  height: 2.25rem;
 }
 
 .aam-brand__title {
   margin: 0;
   color: var(--pf-t--global--text--color--on-dark, #fff);
+  line-height: 1.2;
+}
+
+.aam-stat-row,
+.aam-monitoring-cards {
+  display: grid;
+  gap: var(--pf-t--global--spacer--md);
+  align-items: start;
+}
+
+.aam-stat-row {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: var(--pf-t--global--spacer--sm);
+}
+
+.aam-monitoring-cards {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+.aam-stat-card,
+.aam-env-monitor-card,
+.aam-monitoring-cards > .pf-v6-c-card,
+.aam-monitoring-cards > .pf-v5-c-card {
+  height: auto;
+}
+
+.aam-stat-card .pf-v6-c-card__body,
+.aam-stat-card .pf-v5-c-card__body {
+  padding-block: var(--pf-t--global--spacer--md);
+}
+
+.aam-metric-bars--compact {
+  display: grid;
+  gap: var(--pf-t--global--spacer--sm);
+}
+
+.aam-health-table {
+  display: grid;
+  gap: var(--pf-t--global--spacer--sm);
+}
+
+.aam-health-table__row {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: var(--pf-t--global--spacer--sm);
+  align-items: center;
+}
+
+.aam-health-table__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pf-t--global--spacer--xs);
+}
+
+.aam-env-monitor-card {
+  height: auto;
 }
 
 .aam-masthead-links {
@@ -184,8 +236,8 @@ a {
     padding: var(--pf-t--global--spacer--md);
   }
 
-  .aam-brand__eyebrow {
-    display: none;
+  .aam-health-table__row {
+    grid-template-columns: 1fr;
   }
 
   .aam-topology-children {

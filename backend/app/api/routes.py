@@ -22,6 +22,7 @@ from app.schemas import (
     MonitoringResponse,
     PolicyCreate,
     PolicyUpdate,
+    PolicyPushResponse,
     PolicyResponse,
     PolicyResultResponse,
     RemoteActionRequest,
@@ -36,16 +37,22 @@ from app.schemas import (
 )
 from app.config import get_settings
 from app.health import health_response
-from app.security import encrypt_secret, require_roles
+from app.security import encrypt_secret, require_roles, resolve_user
 from app.services.collector import enqueue_sync, record_action
 from app.services.connectors import AAPConnector
 from app.services.dashboard import build_dashboard
 from app.services.jobs import build_fleet_job_stats, build_fleet_jobs
 from app.services.monitoring import build_monitoring
+from app.services.policies import evaluate_fleet
 from app.services.search import run_search
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+@router.get("/me", response_model=UserContext)
+async def current_user(user: UserContext = Depends(resolve_user)) -> UserContext:
+    return user
 
 
 @router.get("/healthz")
@@ -464,6 +471,8 @@ def create_policy(
     db.add(policy)
     db.commit()
     db.refresh(policy)
+    if payload.enabled and payload.push_to_fleet:
+        evaluate_fleet(db, policy_id=policy.id)
     return PolicyResponse.model_validate(policy)
 
 
@@ -494,6 +503,24 @@ def update_policy(
     db.commit()
     db.refresh(policy)
     return PolicyResponse.model_validate(policy)
+
+
+@router.post("/policies/{policy_id}/push", response_model=PolicyPushResponse)
+def push_policy(
+    policy_id: str,
+    db: Session = Depends(get_db),
+    _: UserContext = Depends(require_roles("aam.admin")),
+) -> PolicyPushResponse:
+    policy = db.get(PolicyDefinition, policy_id)
+    if policy is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Policy not found")
+    if not policy.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Enable the policy before pushing it to managed environments",
+        )
+    counts = evaluate_fleet(db, policy_id=policy.id)
+    return PolicyPushResponse(policy_id=policy.id, **counts)
 
 
 @router.get("/policy-results", response_model=list[PolicyResultResponse])
