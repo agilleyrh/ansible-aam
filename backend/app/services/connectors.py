@@ -15,6 +15,28 @@ from app.services.platform_config import sanitize_controller_settings
 
 logger = logging.getLogger(__name__)
 
+SERVICE_LABELS = {
+    "gateway": "Gateway",
+    "controller": "Controller",
+    "eda": "Event-Driven Ansible",
+    "hub": "Automation Hub",
+}
+
+
+def _collection_failure(service: str, exc: Exception) -> dict[str, Any]:
+    error = str(exc)
+    first_line = error.splitlines()[0] if error else f"{service} collection failed"
+    label = SERVICE_LABELS.get(service, service)
+    return {
+        "health": "critical",
+        "error": error,
+        "health_reason": f"{label} collection failed ({first_line}).",
+        "health_action": (
+            f"Confirm {label} is running on the AAP environment, that the registered URL and credentials "
+            "still work, then sync again from the environment page."
+        ),
+    }
+
 DEFAULT_SERVICE_PATHS: dict[str, dict[str, str]] = {
     "gateway": {
         "health": "/api/gateway/v1/ping/",
@@ -345,7 +367,7 @@ class AAPConnector:
             summary, resources = await collector()
             return service, summary, resources
         except Exception as exc:  # noqa: BLE001
-            return service, {"health": "critical", "error": str(exc)}, []
+            return service, _collection_failure(service, exc), []
 
     async def collect(self) -> dict[str, Any]:
         results = await asyncio.gather(
@@ -506,8 +528,18 @@ class AAPConnector:
             "active_node": ping.get("active_node") if isinstance(ping, dict) else None,
         }
 
-        if len(failed_jobs) >= 5 or failed_projects:
+        reasons: list[str] = []
+        actions: list[str] = []
+        if len(failed_jobs) >= 5:
+            reasons.append(f"{len(failed_jobs)} recent failed jobs")
+            actions.append("Open Jobs, inspect the failures, fix the template/inventory/credentials in AAP, then re-run.")
+        if failed_projects:
+            reasons.append(f"{failed_projects} project(s) in a failed or error state")
+            actions.append("Open those projects in AAP controller and run a successful project update.")
+        if reasons:
             summary["health"] = "warning"
+            summary["health_reason"] = "Controller is reachable, but " + " and ".join(reasons) + "."
+            summary["health_action"] = " ".join(actions)
 
         summary["config"] = await self.collect_controller_config()
         config = summary["config"]
@@ -682,14 +714,23 @@ class AAPConnector:
             decision_environments = sorted({str(item.get("name")) for item in de_items if item.get("name")})
         except Exception as exc:  # noqa: BLE001
             logger.debug("EDA decision environment collection skipped: %s", exc)
-        summary = {
-            "health": "healthy" if activation_count else "warning",
+        summary: dict[str, Any] = {
+            "health": "healthy",
             "activation_count": activation_count,
             "project_count": project_count,
             "decision_environment_count": de_count,
             "disabled_activations": disabled,
             "config": {"decision_environments": decision_environments},
         }
+        if not activation_count:
+            summary["health"] = "warning"
+            summary["health_reason"] = (
+                "Event-Driven Ansible is reachable, but no rulebook activations were found, so it is not processing events."
+            )
+            summary["health_action"] = (
+                "Create a rulebook activation in AAP if this environment should use EDA. "
+                "If EDA is unused here, this warning is expected."
+            )
         return summary, resources
 
     async def collect_hub(self) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -736,12 +777,18 @@ class AAPConnector:
         resources = list(self._resource_records("hub", "repository", repos))
         resources.extend(self._resource_records("hub", "collection", collections))
 
-        summary = {
-            "health": "healthy" if repo_count or collection_count else "warning",
+        summary: dict[str, Any] = {
+            "health": "healthy",
             "repository_count": repo_count,
             "collection_count": collection_count,
             "config": await self._collect_hub_config(base_url),
         }
+        if not (repo_count or collection_count):
+            summary["health"] = "warning"
+            summary["health_reason"] = "Automation Hub responded, but returned no repositories or collections."
+            summary["health_action"] = (
+                "Publish or sync collections in Hub, or ignore this if Hub is not used for content in this environment."
+            )
         return summary, resources
 
     async def _collect_hub_config(self, base_url: str) -> dict[str, Any]:

@@ -21,6 +21,7 @@ import { parseCapabilityProfile } from "../capabilities";
 import { EmptyState } from "../components/empty-state";
 import { LinkButton } from "../components/link-button";
 import { MetricBarChart } from "../components/metric-bar-chart";
+import { MonitoringFindings, MonitoringHealthyState } from "../components/monitoring-findings";
 import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
 import { StatusPill } from "../components/status-pill";
@@ -31,6 +32,8 @@ import {
   getMonitoringValue,
   getSnapshotHealth,
   getSnapshot,
+  collectEnvironmentFindings,
+  collectMonitoringFindings,
   monitoredServices,
   monitoringPointGroups,
 } from "../monitoring";
@@ -132,6 +135,10 @@ export function MonitoringPage() {
   }
 
   const environments = data.environments;
+  const findings = collectMonitoringFindings(environments);
+  const failedJobCount = sumNumericMetric(environments, "controller", "failed_jobs_recent");
+  const failedProjectCount = sumNumericMetric(environments, "controller", "failed_projects_recent");
+  const disabledActivationCount = sumNumericMetric(environments, "eda", "disabled_activations");
   const serviceBreakdown = buildHealthBreakdown(environments);
   const controllerCount = environments.filter((environment) => getSnapshotHealth(environment.snapshots, "controller") !== "not_configured").length;
   const edaCount = environments.filter((environment) => getSnapshotHealth(environment.snapshots, "eda") !== "not_configured").length;
@@ -168,7 +175,6 @@ export function MonitoringPage() {
       value: environments.filter((environment) => parseCapabilityProfile(environment.capabilities).profile.gateway_enforced).length,
       total: environments.length,
       valueText: "Environments expecting gateway-only access",
-      variant: "warning" as const,
     },
     {
       label: "Metrics or reports declared",
@@ -185,7 +191,6 @@ export function MonitoringPage() {
       value: environments.filter((environment) => parseCapabilityProfile(environment.capabilities).profile.content_signing_enabled).length,
       total: environments.length,
       valueText: "Environments with content signing declarations",
-      variant: "warning" as const,
     },
   ];
   const operationalSignals = [
@@ -203,15 +208,15 @@ export function MonitoringPage() {
     },
     {
       label: "Recent failed jobs",
-      value: sumNumericMetric(environments, "controller", "failed_jobs_recent"),
+      value: failedJobCount,
       valueText: "Failed jobs reported by recent controller queries",
-      variant: "danger" as const,
+      variant: failedJobCount > 0 ? ("danger" as const) : ("success" as const),
     },
     {
       label: "Failed projects",
-      value: sumNumericMetric(environments, "controller", "failed_projects_recent"),
+      value: failedProjectCount,
       valueText: "Projects currently reporting a failed state",
-      variant: "warning" as const,
+      variant: failedProjectCount > 0 ? ("warning" as const) : ("success" as const),
     },
     {
       label: "EDA activations",
@@ -221,9 +226,9 @@ export function MonitoringPage() {
     },
     {
       label: "Disabled activations",
-      value: sumNumericMetric(environments, "eda", "disabled_activations"),
+      value: disabledActivationCount,
       valueText: "Activations currently disabled",
-      variant: "warning" as const,
+      variant: disabledActivationCount > 0 ? ("warning" as const) : ("success" as const),
     },
     {
       label: "Hub collections",
@@ -241,7 +246,7 @@ export function MonitoringPage() {
         <PageHeader
           section="Monitoring"
           title="Fleet monitoring and service posture"
-          description="Review gateway, controller, EDA, and automation hub signals in one place, then drill into each registered environment for deeper detail and settings."
+          description="Review gateway, controller, EDA, and Hub signals from the latest sync. Warnings mean a service is reachable but incomplete or unhealthy; critical means collection failed."
           actions={
             <>
               <LinkButton to="/activity" variant="secondary">
@@ -297,15 +302,45 @@ export function MonitoringPage() {
       ) : (
         <>
           <StackItem>
+            <Card>
+              <CardHeader>
+                <Stack>
+                  <StackItem>
+                    <Title headingLevel="h2" size="lg">
+                      Needs attention
+                    </Title>
+                  </StackItem>
+                  <StackItem>
+                    <Content component="p" className="aam-muted">
+                      These findings come from the latest sync. A warning means the service answered but looks incomplete or unhealthy. Critical means AAM could not collect that service.
+                    </Content>
+                  </StackItem>
+                </Stack>
+              </CardHeader>
+              <CardBody>
+                {findings.length > 0 ? <MonitoringFindings findings={findings} /> : <MonitoringHealthyState />}
+              </CardBody>
+            </Card>
+          </StackItem>
+          <StackItem>
             <Grid hasGutter>
               <GridItem md={6}>
                 <Stack hasGutter>
                   <StackItem>
                     <Card>
                       <CardHeader>
-                        <Title headingLevel="h2" size="lg">
-                          Fleet service readiness
-                        </Title>
+                        <Stack>
+                          <StackItem>
+                            <Title headingLevel="h2" size="lg">
+                              Fleet service readiness
+                            </Title>
+                          </StackItem>
+                          <StackItem>
+                            <Content component="p" className="aam-muted">
+                              Counts of the latest health state per service. Use Needs attention above for the reason and the fix.
+                            </Content>
+                          </StackItem>
+                        </Stack>
                       </CardHeader>
                       <CardBody>
                         <div className="aam-health-table">
@@ -335,9 +370,18 @@ export function MonitoringPage() {
                   <StackItem>
                     <Card>
                       <CardHeader>
-                        <Title headingLevel="h2" size="lg">
-                          Environment health scores
-                        </Title>
+                        <Stack>
+                          <StackItem>
+                            <Title headingLevel="h2" size="lg">
+                              Environment health scores
+                            </Title>
+                          </StackItem>
+                          <StackItem>
+                            <Content component="p" className="aam-muted">
+                              Average of gateway, controller, EDA, and Hub. Healthy scores 100, warning 70, critical 35. Below 85 shows as warning.
+                            </Content>
+                          </StackItem>
+                        </Stack>
                       </CardHeader>
                       <CardBody>
                         <MetricBarChart
@@ -427,6 +471,9 @@ export function MonitoringPage() {
                                   </Label>
                                 ))}
                               </div>
+                            </StackItem>
+                            <StackItem>
+                              <MonitoringFindings findings={collectEnvironmentFindings(environment)} showEnvironment={false} />
                             </StackItem>
                             <StackItem>
                               <ExpandableSection toggleText="Collection details">

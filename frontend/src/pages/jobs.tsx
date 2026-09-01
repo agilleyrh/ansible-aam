@@ -16,7 +16,7 @@ import {
 } from "@patternfly/react-core";
 import { Table, Tbody, Td, Th, Thead, Tr } from "@patternfly/react-table";
 import { ProcessAutomationIcon } from "@patternfly/react-icons";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { api } from "../api";
 import { EmptyState } from "../components/empty-state";
@@ -49,10 +49,11 @@ function resolveControllerUrl(job: ControllerJob): string | null {
 }
 
 export function JobsPage() {
+  const [searchParams] = useSearchParams();
   const [data, setData] = useState<FleetJobsResponse | null>(null);
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([]);
-  const [statusFilter, setStatusFilter] = useState("active");
-  const [environmentFilter, setEnvironmentFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "active");
+  const [environmentFilter, setEnvironmentFilter] = useState(searchParams.get("environmentId") || "all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);

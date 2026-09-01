@@ -35,10 +35,12 @@ import { EmptyState } from "../components/empty-state";
 import { EnvironmentForm } from "../components/environment-form";
 import { LinkButton } from "../components/link-button";
 import { MetricBarChart } from "../components/metric-bar-chart";
+import { MonitoringFindings } from "../components/monitoring-findings";
 import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
 import { StatusPill } from "../components/status-pill";
 import {
+  collectEnvironmentFindings,
   formatMonitoringValue,
   getCollectionProfile,
   getHealthScore,
@@ -602,7 +604,7 @@ export function EnvironmentDetailPage() {
                           </StackItem>
                           <StackItem>
                             <Content component="p" className="aam-muted">
-                              Core platform services and their latest collected health states.
+                              Core platform services and their latest collected health states. Warnings include a reason and the next step below.
                             </Content>
                           </StackItem>
                         </Stack>
@@ -619,6 +621,9 @@ export function EnvironmentDetailPage() {
                               </div>
                             </div>
                           ))}
+                        </div>
+                        <div className="aam-tab-panel">
+                          <MonitoringFindings findings={collectEnvironmentFindings(environment)} showEnvironment={false} />
                         </div>
                       </CardBody>
                     </Card>

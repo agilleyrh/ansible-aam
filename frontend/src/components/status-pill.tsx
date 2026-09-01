@@ -24,7 +24,7 @@ export function StatusPill({ status }: Props) {
     );
   }
 
-  if (["warning", "queued", "running", "pending", "waiting", "new", "in_progress"].includes(normalized)) {
+  if (["queued", "running", "pending", "waiting", "new", "in_progress"].includes(normalized)) {
     return (
       <Label color="orange" icon={<OutlinedClockIcon />} isCompact>
         {humanize(normalized)}
@@ -32,9 +32,17 @@ export function StatusPill({ status }: Props) {
     );
   }
 
-  if (["critical", "failed", "error", "disabled", "noncompliant", "non_compliant", "degraded", "canceled", "cancelled"].includes(normalized)) {
+  if (["warning", "degraded"].includes(normalized)) {
     return (
-      <Label color="red" icon={normalized === "warning" ? <ExclamationTriangleIcon /> : <ExclamationCircleIcon />} isCompact>
+      <Label color="orange" icon={<ExclamationTriangleIcon />} isCompact>
+        {humanize(normalized)}
+      </Label>
+    );
+  }
+
+  if (["critical", "failed", "error", "disabled", "noncompliant", "non_compliant", "canceled", "cancelled"].includes(normalized)) {
+    return (
+      <Label color="red" icon={<ExclamationCircleIcon />} isCompact>
         {humanize(normalized)}
       </Label>
     );
