@@ -21,11 +21,18 @@ export function SearchPage() {
 
   async function onSubmit(event?: FormEvent | SyntheticEvent) {
     event?.preventDefault();
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setError("Enter at least two characters to search.");
+      setSearched(true);
+      setResults([]);
+      return;
+    }
     setError(null);
     setSearched(true);
     setSearching(true);
     try {
-      const value = await api.search(query);
+      const value = await api.search(trimmed);
       setResults(value);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed.");

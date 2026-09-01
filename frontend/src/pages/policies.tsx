@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Bullseye,
+  Button,
   Card,
   CardBody,
   CardHeader,
@@ -14,6 +15,7 @@ import {
   Label,
   Stack,
   StackItem,
+  Switch,
   Content,
   Title,
 } from "@patternfly/react-core";
@@ -45,6 +47,7 @@ export function PoliciesPage() {
   const [results, setResults] = useState<PolicyResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -69,6 +72,19 @@ export function PoliciesPage() {
       });
     return () => controller.abort();
   }, []);
+
+  async function togglePolicy(policy: Policy, enabled: boolean) {
+    setUpdatingId(policy.id);
+    setError(null);
+    try {
+      const updated = await api.updatePolicy(policy.id, { enabled });
+      setPolicies((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to update the policy.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
 
   if (error && policies.length === 0) {
     return <Alert isInline variant="danger" title={`Governance unavailable: ${error}`} />;
@@ -122,6 +138,17 @@ export function PoliciesPage() {
                     </StackItem>
                     <StackItem>
                       <Label color={severityColor(policy.severity)}>{policy.severity}</Label>
+                    </StackItem>
+                    <StackItem>
+                      <Switch
+                        id={`policy-enabled-${policy.id}`}
+                        label={policy.enabled ? "Enabled" : "Disabled"}
+                        isChecked={policy.enabled}
+                        isDisabled={updatingId === policy.id}
+                        onChange={(_, checked) => {
+                          void togglePolicy(policy, checked);
+                        }}
+                      />
                     </StackItem>
                   </Stack>
                 </CardHeader>
@@ -184,6 +211,20 @@ export function PoliciesPage() {
                               Policy
                             </Content>
                             <div>{policy?.name ?? result.policy_id}</div>
+                          </GridItem>
+                          <GridItem md={2}>
+                            <Content component="small" className="aam-muted">
+                              Environment
+                            </Content>
+                            <div>
+                              {result.environment_name ? (
+                                <LinkButton to={`/environments/${result.environment_id}`} variant="link" isInline>
+                                  {result.environment_name}
+                                </LinkButton>
+                              ) : (
+                                result.environment_id
+                              )}
+                            </div>
                           </GridItem>
                           <GridItem md={2}>
                             <Content component="small" className="aam-muted">

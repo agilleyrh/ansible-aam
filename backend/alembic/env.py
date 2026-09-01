@@ -1,3 +1,4 @@
+import logging
 from logging.config import fileConfig
 
 from alembic import context
@@ -9,7 +10,8 @@ from app import models  # noqa: F401 -- ensure all models are imported for autog
 
 config = context.config
 
-if config.config_file_name is not None:
+# Do not reset uvicorn/app logging when migrations run in-process.
+if config.config_file_name is not None and not logging.getLogger().handlers:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata

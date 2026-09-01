@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aam-worker
+  labels:
+    app.kubernetes.io/name: aam-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aam-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aam-worker
+    spec:
+      serviceAccountName: aam
+      containers:
+        - name: worker
+          image: aam-api:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "app.worker"]
+          envFrom:
+            - configMapRef:
+                name: aam
+          env:
+            - name: AAM_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: aam
+                  key: database-url
+            - name: AAM_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aam
+                  key: secret-key
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+      securityContext:
+        runAsNonRoot: true

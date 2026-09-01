@@ -18,6 +18,8 @@ services:
   aam-api:
     build:
       context: ../../backend
+    environment:
+      OPENSSL_armcap: "0"
     env_file:
       - ../env/backend.env.example
     depends_on:
@@ -30,6 +32,8 @@ services:
     build:
       context: ../../backend
     command: ["python", "-m", "app.worker"]
+    environment:
+      OPENSSL_armcap: "0"
     env_file:
       - ../env/backend.env.example
     depends_on:
@@ -40,6 +44,8 @@ services:
     build:
       context: ../../backend
     command: ["python", "-m", "app.scheduler"]
+    environment:
+      OPENSSL_armcap: "0"
     env_file:
       - ../env/backend.env.example
     depends_on:

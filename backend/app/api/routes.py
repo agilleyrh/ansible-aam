@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from redis import Redis
-from sqlalchemy import or_, select, text
+from fastapi.responses import JSONResponse
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.dependencies import get_db
@@ -16,10 +16,12 @@ from app.schemas import (
     EnvironmentDetail,
     EnvironmentSummary,
     EnvironmentUpdate,
+    EnvironmentGroupResponse,
     FleetJobsResponse,
     FleetJobStatsResponse,
     MonitoringResponse,
     PolicyCreate,
+    PolicyUpdate,
     PolicyResponse,
     PolicyResultResponse,
     RemoteActionRequest,
@@ -33,6 +35,7 @@ from app.schemas import (
     UserContext,
 )
 from app.config import get_settings
+from app.health import health_response
 from app.security import encrypt_secret, require_roles
 from app.services.collector import enqueue_sync, record_action
 from app.services.connectors import AAPConnector
@@ -46,23 +49,8 @@ router = APIRouter()
 
 
 @router.get("/healthz")
-def healthcheck(db: Session = Depends(get_db)) -> dict[str, str]:
-    settings = get_settings()
-    checks: dict[str, str] = {}
-    try:
-        db.execute(text("SELECT 1"))
-        checks["database"] = "ok"
-    except Exception:
-        checks["database"] = "error"
-    try:
-        redis = Redis.from_url(settings.redis_url, socket_connect_timeout=2)
-        redis.ping()
-        checks["redis"] = "ok"
-        redis.close()
-    except Exception:
-        checks["redis"] = "error"
-    overall = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
-    return {"status": overall, **checks}
+def healthcheck() -> JSONResponse:
+    return health_response()
 
 
 @router.get("/dashboard", response_model=DashboardResponse)
@@ -112,6 +100,36 @@ def list_environments(
 ) -> list[EnvironmentSummary]:
     environments = db.scalars(select(ManagedEnvironment).order_by(ManagedEnvironment.name)).all()
     return [EnvironmentSummary.model_validate(environment) for environment in environments]
+
+
+@router.get("/groups", response_model=list[EnvironmentGroupResponse])
+def list_environment_groups(
+    db: Session = Depends(get_db),
+    _: UserContext = Depends(require_roles("aam.viewer")),
+) -> list[EnvironmentGroupResponse]:
+    environments = db.scalars(select(ManagedEnvironment).order_by(ManagedEnvironment.name)).all()
+    grouped: dict[str, list[ManagedEnvironment]] = {}
+    for environment in environments:
+        names = [item for item in (environment.groupings or []) if item]
+        if not names:
+            names = ["ungrouped"]
+        for name in names:
+            grouped.setdefault(name, []).append(environment)
+
+    responses: list[EnvironmentGroupResponse] = []
+    for name, members in sorted(grouped.items(), key=lambda item: item[0].lower()):
+        summaries = [EnvironmentSummary.model_validate(environment) for environment in members]
+        responses.append(
+            EnvironmentGroupResponse(
+                name=name,
+                environment_count=len(members),
+                healthy_count=sum(1 for environment in members if environment.status == "healthy"),
+                warning_count=sum(1 for environment in members if environment.status == "warning"),
+                critical_count=sum(1 for environment in members if environment.status == "critical"),
+                environments=summaries,
+            )
+        )
+    return responses
 
 
 @router.post("/environments", response_model=EnvironmentSummary, status_code=status.HTTP_201_CREATED)
@@ -246,6 +264,58 @@ def sync_environment(
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return {"job_id": job_id, "status": "queued"}
+
+
+@router.get("/topology", response_model=TopologyResponse)
+def fleet_topology(
+    db: Session = Depends(get_db),
+    _: UserContext = Depends(require_roles("aam.viewer")),
+) -> TopologyResponse:
+    environments = db.scalars(
+        select(ManagedEnvironment)
+        .options(selectinload(ManagedEnvironment.snapshots))
+        .order_by(ManagedEnvironment.name)
+    ).all()
+
+    hub_id = "aam-hub"
+    nodes = [
+        TopologyNode(
+            id=hub_id,
+            label="Advanced Automation Manager",
+            kind="hub",
+            status="healthy" if environments else "unknown",
+            metadata={"environment_count": len(environments)},
+        )
+    ]
+    edges: list[TopologyEdge] = []
+    for environment in environments:
+        nodes.append(
+            TopologyNode(
+                id=environment.id,
+                label=environment.name,
+                kind="environment",
+                status=environment.status,
+                metadata={
+                    "deployment_type": environment.deployment_type,
+                    "groupings": environment.groupings,
+                    "platform_version": environment.platform_version,
+                },
+            )
+        )
+        edges.append(TopologyEdge(source=hub_id, target=environment.id, relationship="manages"))
+        for snapshot in environment.snapshots:
+            service_id = f"{environment.id}:{snapshot.service}"
+            nodes.append(
+                TopologyNode(
+                    id=service_id,
+                    label=f"{environment.name} {snapshot.service.upper()}",
+                    kind="service",
+                    status=snapshot.health,
+                    metadata={"service": snapshot.service, "environment": environment.name},
+                )
+            )
+            edges.append(TopologyEdge(source=environment.id, target=service_id, relationship="contains"))
+    return TopologyResponse(nodes=nodes, edges=edges)
 
 
 @router.get("/environments/{environment_id}/topology", response_model=TopologyResponse)
@@ -397,17 +467,53 @@ def create_policy(
     return PolicyResponse.model_validate(policy)
 
 
+@router.patch("/policies/{policy_id}", response_model=PolicyResponse)
+def update_policy(
+    policy_id: str,
+    payload: PolicyUpdate,
+    db: Session = Depends(get_db),
+    _: UserContext = Depends(require_roles("aam.admin")),
+) -> PolicyResponse:
+    policy = db.get(PolicyDefinition, policy_id)
+    if policy is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Policy not found")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "name" in update_data:
+        duplicate = db.scalars(
+            select(PolicyDefinition).where(
+                PolicyDefinition.name == update_data["name"],
+                PolicyDefinition.id != policy_id,
+            )
+        ).one_or_none()
+        if duplicate is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Policy name already exists")
+
+    for field, value in update_data.items():
+        setattr(policy, field, value)
+    db.commit()
+    db.refresh(policy)
+    return PolicyResponse.model_validate(policy)
+
+
 @router.get("/policy-results", response_model=list[PolicyResultResponse])
 def list_policy_results(
     environment_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: UserContext = Depends(require_roles("aam.viewer")),
 ) -> list[PolicyResultResponse]:
-    statement = select(PolicyResult).order_by(PolicyResult.evaluated_at.desc())
+    statement = (
+        select(PolicyResult, ManagedEnvironment)
+        .join(ManagedEnvironment, ManagedEnvironment.id == PolicyResult.environment_id)
+        .order_by(PolicyResult.evaluated_at.desc())
+    )
     if environment_id:
         statement = statement.where(PolicyResult.environment_id == environment_id)
-    results = db.scalars(statement).all()
-    return [PolicyResultResponse.model_validate(result) for result in results]
+    rows = db.execute(statement).all()
+    return [
+        PolicyResultResponse.model_validate(result).model_copy(update={"environment_name": environment.name})
+        for result, environment in rows
+    ]
 
 
 @router.get("/search", response_model=list[SearchResult])

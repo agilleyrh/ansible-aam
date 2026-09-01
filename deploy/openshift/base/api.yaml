@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aam-api
+  labels:
+    app.kubernetes.io/name: aam-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aam-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aam-api
+    spec:
+      serviceAccountName: aam
+      containers:
+        - name: api
+          image: aam-api:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: aam
+          env:
+            - name: AAM_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: aam
+                  key: database-url
+            - name: AAM_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aam
+                  key: secret-key
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+      securityContext:
+        runAsNonRoot: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aam-api
+  labels:
+    app.kubernetes.io/name: aam-api
+spec:
+  selector:
+    app.kubernetes.io/name: aam-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

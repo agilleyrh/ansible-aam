@@ -3,7 +3,7 @@ import signal
 import time
 
 from app.config import get_settings
-from app.database import SessionLocal, init_db
+from app.database import SessionLocal, init_db, wait_for_db
 from app.services.collector import enqueue_due_syncs
 from app.services.policies import seed_default_policies
 
@@ -23,7 +23,9 @@ def main() -> None:
     signal.signal(signal.SIGINT, _shutdown_handler)
 
     settings = get_settings()
-    init_db()
+    wait_for_db()
+    # Schema changes belong to the API (Alembic). Avoid create_all racing migrations.
+    init_db(migrate=False)
     db = SessionLocal()
     try:
         seed_default_policies(db)

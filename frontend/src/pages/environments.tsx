@@ -7,6 +7,8 @@ import {
   Card,
   CardBody,
   CardHeader,
+  FormSelect,
+  FormSelectOption,
   Gallery,
   Grid,
   GridItem,
@@ -52,6 +54,7 @@ export function EnvironmentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [groupFilter, setGroupFilter] = useState("all");
 
   async function loadEnvironments() {
     const items = await api.environments();
@@ -102,9 +105,16 @@ export function EnvironmentsPage() {
     }
   }
 
-  const healthyCount = environments.filter((environment) => environment.status === "healthy").length;
-  const warningCount = environments.filter((environment) => environment.status === "warning").length;
-  const criticalCount = environments.filter((environment) => environment.status === "critical").length;
+  const groups = Array.from(new Set(environments.flatMap((environment) => environment.groupings))).sort();
+  const visibleEnvironments =
+    groupFilter === "all"
+      ? environments
+      : groupFilter === "ungrouped"
+        ? environments.filter((environment) => environment.groupings.length === 0)
+        : environments.filter((environment) => environment.groupings.includes(groupFilter));
+  const healthyCount = visibleEnvironments.filter((environment) => environment.status === "healthy").length;
+  const warningCount = visibleEnvironments.filter((environment) => environment.status === "warning").length;
+  const criticalCount = visibleEnvironments.filter((environment) => environment.status === "critical").length;
 
   return (
     <Stack hasGutter>
@@ -139,7 +149,7 @@ export function EnvironmentsPage() {
 
       <StackItem>
         <Gallery hasGutter minWidths={{ default: "180px", lg: "220px" }}>
-          <StatCard label="Registered" value={environments.length} detail="AAP environments tracked by the hub" />
+          <StatCard label="Registered" value={visibleEnvironments.length} detail="AAP environments tracked by the hub" />
           <StatCard label="Healthy" value={healthyCount} detail="No active sync or service issues" />
           <StatCard label="Warning" value={warningCount} detail="Needs follow-up or attention" />
           <StatCard label="Critical" value={criticalCount} detail="Recent failures or missing services" />
@@ -160,6 +170,22 @@ export function EnvironmentsPage() {
                   Registration is intentionally focused. Use the environment detail view for advanced service path overrides, platform declarations, and direct actions.
                 </Content>
               </StackItem>
+              {environments.length > 0 ? (
+                <StackItem>
+                  <FormSelect
+                    id="environment-group-filter"
+                    value={groupFilter}
+                    aria-label="Filter environments by group"
+                    onChange={(_, value) => setGroupFilter(value)}
+                  >
+                    <FormSelectOption value="all" label="All groups" />
+                    <FormSelectOption value="ungrouped" label="Ungrouped" />
+                    {groups.map((group) => (
+                      <FormSelectOption key={group} value={group} label={group} />
+                    ))}
+                  </FormSelect>
+                </StackItem>
+              ) : null}
             </Stack>
           </CardHeader>
           <CardBody>
@@ -179,9 +205,19 @@ export function EnvironmentsPage() {
                   </Button>
                 }
               />
+            ) : visibleEnvironments.length === 0 ? (
+              <EmptyState
+                title="No environments in this group"
+                description="Choose a different group, or register an environment and assign it to a group."
+                action={
+                  <Button type="button" variant="primary" onClick={() => setIsCreateModalOpen(true)}>
+                    Register environment
+                  </Button>
+                }
+              />
             ) : (
               <Gallery hasGutter minWidths={{ default: "320px", xl: "360px" }}>
-                {environments.map((environment) => {
+                {visibleEnvironments.map((environment) => {
                   const serviceStatuses = getServiceStatuses(environment.summary);
 
                   return (
