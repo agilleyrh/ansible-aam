@@ -47,6 +47,15 @@ def test_eda_activation_candidates_include_aap27_path():
     assert "/api/eda/v1/rulebook_activations/" in EDA_ACTIVATION_CANDIDATE_PATHS
 
 
+def test_collection_failure_includes_reason_and_action():
+    from app.services.connectors import _collection_failure
+
+    payload = _collection_failure("hub", RuntimeError("Server error '503 Service Unavailable' for url 'https://hub.example/api'"))
+    assert payload["health"] == "critical"
+    assert "503" in payload["health_reason"]
+    assert "sync" in payload["health_action"].lower()
+
+
 def test_controller_candidate_paths_include_legacy_and_gateway_prefixes():
     connector = AAPConnector(FakeEnvironment())
     paths = connector._controller_candidate_paths("/api/controller/v2/ping/")

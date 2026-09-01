@@ -160,7 +160,8 @@ a {
   margin-top: var(--pf-t--global--spacer--sm);
 }
 
-.aam-link-cluster {
+.aam-link-cluster,
+.aam-finding-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--pf-t--global--spacer--sm);
