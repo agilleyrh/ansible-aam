@@ -161,6 +161,13 @@ class PolicyResponse(BaseModel):
     rule: dict[str, Any]
 
 
+class PolicyCheckResult(BaseModel):
+    environment_id: str
+    environment_name: str
+    compliance: str
+    message: str
+
+
 class PolicyPushResponse(BaseModel):
     policy_id: str
     evaluated: int
@@ -169,6 +176,33 @@ class PolicyPushResponse(BaseModel):
     unknown: int
     skipped: int
     environments: int
+    checks: list[PolicyCheckResult] = Field(default_factory=list)
+
+
+class PolicyRemediateResponse(PolicyPushResponse):
+    applied: int = 0
+    failed: int = 0
+    details: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ConfigDriftItem(BaseModel):
+    kind: str
+    name: str
+    values: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConfigBaselineEnvironment(BaseModel):
+    id: str
+    name: str
+    settings: dict[str, Any] = Field(default_factory=dict)
+    organizations: list[str] = Field(default_factory=list)
+    execution_environments: list[Any] = Field(default_factory=list)
+    instance_groups: list[str] = Field(default_factory=list)
+
+
+class ConfigBaselineResponse(BaseModel):
+    environments: list[ConfigBaselineEnvironment] = Field(default_factory=list)
+    drift: list[ConfigDriftItem] = Field(default_factory=list)
 
 
 class PolicyResultResponse(BaseModel):
@@ -289,6 +323,10 @@ class RemoteActionRequest(BaseModel):
         "sync_project",
         "sync_repository",
         "cancel_job",
+        "patch_controller_settings",
+        "ensure_organization",
+        "ensure_execution_environment",
+        "ensure_instance_group",
     ]
     target_id: str
     target_name: str | None = None

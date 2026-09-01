@@ -11,6 +11,8 @@ import type {
   Policy,
   PolicyCreatePayload,
   PolicyPushResult,
+  PolicyRemediateResult,
+  ConfigBaseline,
   PolicyResult,
   EnvironmentGroup,
   RemoteActionRequest,
@@ -96,7 +98,9 @@ export const api = {
   updatePolicy: (id: string, payload: Partial<Pick<Policy, "enabled" | "name" | "description" | "severity" | "scope" | "rule">>) =>
     request<Policy>(`/policies/${id}`, { method: "PATCH", body: payload }),
   pushPolicy: (id: string) => request<PolicyPushResult>(`/policies/${id}/push`, { method: "POST" }),
+  remediatePolicy: (id: string) => request<PolicyRemediateResult>(`/policies/${id}/remediate`, { method: "POST" }),
   policyResults: (signal?: AbortSignal) => request<PolicyResult[]>("/policy-results", { signal }),
+  configBaseline: (signal?: AbortSignal) => request<ConfigBaseline>("/config-baseline", { signal }),
   me: (signal?: AbortSignal) => request<CurrentUser>("/me", { signal }),
   search: (q: string, signal?: AbortSignal) => request<SearchResult[]>(`/search?q=${encodeURIComponent(q)}`, { signal }),
   syncExecutions: (signal?: AbortSignal) => request<SyncExecution[]>("/sync-executions", { signal }),

@@ -126,6 +126,13 @@ export type PolicyCreatePayload = {
   push_to_fleet: boolean;
 };
 
+export type PolicyCheckResult = {
+  environment_id: string;
+  environment_name: string;
+  compliance: string;
+  message: string;
+};
+
 export type PolicyPushResult = {
   policy_id: string;
   evaluated: number;
@@ -134,6 +141,31 @@ export type PolicyPushResult = {
   unknown: number;
   skipped: number;
   environments: number;
+  checks?: PolicyCheckResult[];
+};
+
+export type PolicyRemediateResult = PolicyPushResult & {
+  applied: number;
+  failed: number;
+  details: Array<{ environment: string; status: string; message?: string }>;
+};
+
+export type ConfigDriftItem = {
+  kind: string;
+  name: string;
+  values: Record<string, unknown>;
+};
+
+export type ConfigBaseline = {
+  environments: Array<{
+    id: string;
+    name: string;
+    settings: Record<string, unknown>;
+    organizations: string[];
+    execution_environments: unknown[];
+    instance_groups: string[];
+  }>;
+  drift: ConfigDriftItem[];
 };
 
 export type CurrentUser = {
@@ -245,7 +277,11 @@ export type RemoteActionName =
   | "set_activation_state"
   | "sync_project"
   | "sync_repository"
-  | "cancel_job";
+  | "cancel_job"
+  | "patch_controller_settings"
+  | "ensure_organization"
+  | "ensure_execution_environment"
+  | "ensure_instance_group";
 
 export type RemoteActionRequest = {
   environment_id: string;

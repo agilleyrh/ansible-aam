@@ -32,7 +32,7 @@ export function StatusPill({ status }: Props) {
     );
   }
 
-  if (["critical", "failed", "error", "disabled", "non_compliant", "degraded", "canceled", "cancelled"].includes(normalized)) {
+  if (["critical", "failed", "error", "disabled", "noncompliant", "non_compliant", "degraded", "canceled", "cancelled"].includes(normalized)) {
     return (
       <Label color="red" icon={normalized === "warning" ? <ExclamationTriangleIcon /> : <ExclamationCircleIcon />} isCompact>
         {humanize(normalized)}

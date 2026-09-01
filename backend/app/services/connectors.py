@@ -11,6 +11,7 @@ import httpx
 from app.config import get_settings
 from app.models import ManagedEnvironment
 from app.security import decrypt_secret
+from app.services.platform_config import sanitize_controller_settings
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,9 @@ DEFAULT_SERVICE_PATHS: dict[str, dict[str, str]] = {
         "projects": "/api/controller/v2/projects/",
         "credentials": "/api/controller/v2/credentials/",
         "execution_environments": "/api/controller/v2/execution_environments/",
+        "instance_groups": "/api/controller/v2/instance_groups/",
+        "notification_templates": "/api/controller/v2/notification_templates/",
+        "settings": "/api/controller/v2/settings/all/",
         "token": "/api/o/token/",
     },
     "eda": {
@@ -505,7 +509,81 @@ class AAPConnector:
         if len(failed_jobs) >= 5 or failed_projects:
             summary["health"] = "warning"
 
+        summary["config"] = await self.collect_controller_config()
+        config = summary["config"]
+        resources.extend(
+            self._resource_records(
+                "controller",
+                "organization",
+                [{"name": name, "id": name} for name in config.get("organizations", [])],
+            )
+        )
+        resources.extend(
+            self._resource_records(
+                "controller",
+                "instance_group",
+                [{"name": name, "id": name} for name in config.get("instance_groups", [])],
+            )
+        )
+
         return summary, resources
+
+    async def collect_controller_config(self) -> dict[str, Any]:
+        config: dict[str, Any] = {
+            "settings": {},
+            "organizations": [],
+            "execution_environments": [],
+            "instance_groups": [],
+            "notification_templates": [],
+        }
+        paths = self.service_paths["controller"]
+
+        try:
+            raw_settings = await self._controller_request_json(paths.get("settings"))
+            if isinstance(raw_settings, dict):
+                config["settings"] = sanitize_controller_settings(raw_settings)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Controller settings collection skipped: %s", exc)
+
+        try:
+            organizations = await self._controller_results(paths.get("organizations"), limit=50)
+            config["organizations"] = sorted(
+                {str(item.get("name")) for item in organizations if item.get("name")}
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Organization collection skipped: %s", exc)
+
+        try:
+            execution_environments = await self._controller_results(paths.get("execution_environments"), limit=50)
+            config["execution_environments"] = [
+                {
+                    "name": item.get("name"),
+                    "image": item.get("image"),
+                    "pull": item.get("pull"),
+                }
+                for item in execution_environments
+                if item.get("name")
+            ]
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Execution environment collection skipped: %s", exc)
+
+        try:
+            instance_groups = await self._controller_results(paths.get("instance_groups"), limit=50)
+            config["instance_groups"] = sorted(
+                {str(item.get("name")) for item in instance_groups if item.get("name")}
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Instance group collection skipped: %s", exc)
+
+        try:
+            templates = await self._controller_results(paths.get("notification_templates"), limit=50)
+            config["notification_templates"] = sorted(
+                {str(item.get("name")) for item in templates if item.get("name")}
+            )
+        except Exception as exec_exc:  # noqa: BLE001
+            logger.debug("Notification template collection skipped: %s", exec_exc)
+
+        return config
 
     async def list_jobs(
         self,
@@ -598,12 +676,19 @@ class AAPConnector:
         resources.extend(self._resource_records("eda", "project", project_items))
 
         disabled = sum(1 for activation in activations if not activation.get("is_enabled", activation.get("enabled", True)))
+        decision_environments: list[str] = []
+        try:
+            de_items = await self._results(base_url, paths.get("decision_environments"), limit=50)
+            decision_environments = sorted({str(item.get("name")) for item in de_items if item.get("name")})
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("EDA decision environment collection skipped: %s", exc)
         summary = {
             "health": "healthy" if activation_count else "warning",
             "activation_count": activation_count,
             "project_count": project_count,
             "decision_environment_count": de_count,
             "disabled_activations": disabled,
+            "config": {"decision_environments": decision_environments},
         }
         return summary, resources
 
@@ -655,8 +740,36 @@ class AAPConnector:
             "health": "healthy" if repo_count or collection_count else "warning",
             "repository_count": repo_count,
             "collection_count": collection_count,
+            "config": await self._collect_hub_config(base_url),
         }
         return summary, resources
+
+    async def _collect_hub_config(self, base_url: str) -> dict[str, Any]:
+        try:
+            payload = await self._request_json_candidates(
+                base_url,
+                [
+                    "/api/galaxy/_ui/v1/settings/",
+                    "/api/automation-hub/_ui/v1/settings/",
+                ],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Hub settings collection skipped: %s", exc)
+            return {}
+        if not isinstance(payload, dict):
+            return {}
+        interesting = {
+            key: payload.get(key)
+            for key in (
+                "GALAXY_REQUIRE_CONTENT_APPROVAL",
+                "GALAXY_REQUIRE_SIGNATURE_FOR_APPROVAL",
+                "GALAXY_AUTO_SIGN_COLLECTIONS",
+                "GALAXY_COLLECTION_SIGNING_SERVICE",
+                "GALAXY_REQUIRE_SIGNATURE_ON_INSTALL",
+            )
+            if key in payload and not (isinstance(payload.get(key), str) and str(payload.get(key)).startswith("$encrypted$"))
+        }
+        return interesting
 
     def _resource_records(
         self,
@@ -760,8 +873,89 @@ class AAPConnector:
                 method="POST",
                 json_body=payload or None,
             )
+        elif action == "patch_controller_settings":
+            service = "controller"
+            response = await self._controller_request_json(
+                path_override or "/api/controller/v2/settings/all/",
+                method="PATCH",
+                json_body=payload,
+            )
+        elif action == "ensure_organization":
+            service = "controller"
+            response = await self._ensure_named_controller_resource(
+                "/api/controller/v2/organizations/",
+                payload.get("name") or target_id,
+                {"name": payload.get("name") or target_id, "description": payload.get("description") or ""},
+            )
+        elif action == "ensure_execution_environment":
+            service = "controller"
+            name = payload.get("name") or target_id
+            body = {
+                "name": name,
+                "image": payload.get("image"),
+                "pull": payload.get("pull") or "missing",
+            }
+            response = await self._ensure_named_controller_resource(
+                "/api/controller/v2/execution_environments/",
+                name,
+                body,
+            )
+        elif action == "ensure_instance_group":
+            service = "controller"
+            name = payload.get("name") or target_id
+            response = await self._ensure_named_controller_resource(
+                "/api/controller/v2/instance_groups/",
+                name,
+                {"name": name},
+            )
         else:
             raise RuntimeError(f"Unsupported action: {action}")
 
         body_dict = response if isinstance(response, dict) else {"results": response}
         return service, body_dict
+
+    async def _ensure_named_controller_resource(
+        self,
+        path: str,
+        name: str,
+        create_body: dict[str, Any],
+    ) -> dict[str, Any]:
+        existing = await self._controller_results(path, params={"name": name}, limit=5)
+        for item in existing:
+            if str(item.get("name")) == name:
+                return {"id": item.get("id"), "name": name, "status": "exists"}
+        try:
+            created = await self._controller_request_json(path, method="POST", json_body=create_body)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in {400, 409}:
+                return {"name": name, "status": "exists", "detail": exc.response.text[:400]}
+            raise
+        if isinstance(created, dict):
+            created.setdefault("status", "created")
+            return created
+        return {"name": name, "status": "created"}
+
+    async def apply_config_remediation(self, rule: dict[str, Any]) -> dict[str, Any]:
+        rule_type = rule.get("type")
+        if rule_type == "controller_setting":
+            key = str(rule.get("key") or "").strip()
+            if not key:
+                raise RuntimeError("controller_setting remediation requires a setting key")
+            _, body = await self.execute_action("patch_controller_settings", key, {key: rule.get("value")})
+            return {"action": "patch_controller_settings", "key": key, "response": body}
+        if rule_type == "named_resource_present":
+            resource_type = str(rule.get("resource_type") or "")
+            name = str(rule.get("name") or "").strip()
+            create = rule.get("create") if isinstance(rule.get("create"), dict) else {}
+            payload = {"name": name, **create}
+            action_map = {
+                "organization": "ensure_organization",
+                "execution_environment": "ensure_execution_environment",
+                "instance_group": "ensure_instance_group",
+            }
+            action = action_map.get(resource_type)
+            if not action:
+                raise RuntimeError(f"Resource type {resource_type} cannot be pushed from the hub")
+            _, body = await self.execute_action(action, name, payload)
+            return {"action": action, "name": name, "response": body}
+        raise RuntimeError(f"Policy rule type {rule_type} cannot be pushed onto managed AAP environments")

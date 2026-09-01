@@ -74,8 +74,15 @@ a {
 
 .aam-brand__title {
   margin: 0;
-  color: var(--pf-t--global--text--color--on-dark, #fff);
+  color: var(--pf-t--global--text--color--regular);
   line-height: 1.2;
+}
+
+.aam-masthead-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  width: 100%;
 }
 
 .aam-monitoring-page .pf-v6-l-grid,

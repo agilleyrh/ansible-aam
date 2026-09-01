@@ -15,6 +15,7 @@ import {
   Label,
   Modal,
   ModalBody,
+  ModalFooter,
   ModalHeader,
   Stack,
   StackItem,
@@ -29,7 +30,7 @@ import { LinkButton } from "../components/link-button";
 import { PageHeader } from "../components/page-header";
 import { PolicyForm } from "../components/policy-form";
 import { StatusPill } from "../components/status-pill";
-import type { Policy, PolicyCreatePayload, PolicyPushResult, PolicyResult } from "../types";
+import type { ConfigBaseline, Policy, PolicyCreatePayload, PolicyPushResult, PolicyRemediateResult, PolicyResult } from "../types";
 import { formatDateTime } from "../utils";
 
 function severityColor(severity: string): "red" | "orange" | "blue" | "grey" {
@@ -50,8 +51,35 @@ function isAdmin(roles: string[]): boolean {
   return roles.some((role) => role === "aam.admin" || role === "platform-admin");
 }
 
+function isRemediable(rule: Record<string, unknown>): boolean {
+  return Boolean(rule.remediate) && (rule.type === "controller_setting" || rule.type === "named_resource_present");
+}
+
+function remediateSummary(result: PolicyRemediateResult): string {
+  return `Wrote configuration to ${result.applied} environment(s), ${result.failed} failed, ${result.skipped} skipped. Now ${result.compliant} compliant, ${result.noncompliant} noncompliant.`;
+}
+
 function pushSummary(result: PolicyPushResult): string {
-  return `Evaluated ${result.evaluated} of ${result.environments} environments — ${result.compliant} compliant, ${result.noncompliant} noncompliant.`;
+  return `Queried ${result.environments} environment(s) live — ${result.compliant} compliant, ${result.noncompliant} noncompliant, ${result.unknown} unknown, ${result.skipped} skipped.`;
+}
+
+type EvaluationSummary = {
+  policyName: string;
+  result: PolicyPushResult;
+  kind: "evaluate" | "remediate";
+};
+
+function evaluationVariant(result: PolicyPushResult): "success" | "warning" | "danger" | "info" {
+  if (result.noncompliant > 0) {
+    return "danger";
+  }
+  if (result.unknown > 0 || result.skipped > 0 || result.environments === 0) {
+    return "warning";
+  }
+  if (result.compliant > 0) {
+    return "success";
+  }
+  return "info";
 }
 
 export function PoliciesPage() {
@@ -62,15 +90,23 @@ export function PoliciesPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [pushingId, setPushingId] = useState<string | null>(null);
+  const [remediatingId, setRemediatingId] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [baseline, setBaseline] = useState<ConfigBaseline | null>(null);
+  const [evaluation, setEvaluation] = useState<EvaluationSummary | null>(null);
 
   async function reload(signal?: AbortSignal) {
-    const [policyList, resultList] = await Promise.all([api.policies(signal), api.policyResults(signal)]);
+    const [policyList, resultList, baselineResult] = await Promise.all([
+      api.policies(signal),
+      api.policyResults(signal),
+      api.configBaseline(signal),
+    ]);
     if (!signal?.aborted) {
       setPolicies(policyList);
       setResults(resultList);
+      setBaseline(baselineResult);
     }
   }
 
@@ -79,8 +115,9 @@ export function PoliciesPage() {
     Promise.allSettled([
       api.policies(controller.signal),
       api.policyResults(controller.signal),
+      api.configBaseline(controller.signal),
       api.me(controller.signal),
-    ]).then(([policiesResult, resultsResult, meResult]) => {
+    ]).then(([policiesResult, resultsResult, baselineResult, meResult]) => {
       if (controller.signal.aborted) {
         return;
       }
@@ -91,6 +128,9 @@ export function PoliciesPage() {
       }
       if (resultsResult.status === "fulfilled") {
         setResults(resultsResult.value);
+      }
+      if (baselineResult.status === "fulfilled") {
+        setBaseline(baselineResult.value);
       }
       if (meResult.status === "fulfilled") {
         setCanManage(isAdmin(meResult.value.roles));
@@ -122,12 +162,29 @@ export function PoliciesPage() {
     setMessage(null);
     try {
       const result = await api.pushPolicy(policy.id);
-      await reload();
+      setEvaluation({ policyName: policy.name, result, kind: "evaluate" });
       setMessage(`${policy.name}: ${pushSummary(result)}`);
+      await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to push the policy.");
+      setError(err instanceof Error ? err.message : "Unable to evaluate the policy.");
     } finally {
       setPushingId(null);
+    }
+  }
+
+  async function remediatePolicy(policy: Policy) {
+    setRemediatingId(policy.id);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await api.remediatePolicy(policy.id);
+      setEvaluation({ policyName: policy.name, result, kind: "remediate" });
+      setMessage(`${policy.name}: ${remediateSummary(result)}`);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to push configuration.");
+    } finally {
+      setRemediatingId(null);
     }
   }
 
@@ -161,7 +218,7 @@ export function PoliciesPage() {
         <PageHeader
           section="Governance"
           title="Fleet policies and compliance results"
-          description="Create hub policies as an administrator, push them to every matching AAP environment, and review the latest compliance outcomes."
+          description="Compare controller settings, organizations, execution environments, and instance groups across the fleet. Admins can create policies and push missing or drifted configuration onto noncompliant AAP environments."
           actions={
             canManage ? (
               <Button variant="primary" onClick={() => setIsCreateOpen(true)}>
@@ -180,6 +237,60 @@ export function PoliciesPage() {
       {error ? (
         <StackItem>
           <Alert isInline variant="danger" title={error} />
+        </StackItem>
+      ) : null}
+
+      {baseline ? (
+        <StackItem>
+          <Card>
+            <CardHeader>
+              <Title headingLevel="h2" size="lg">
+                Fleet configuration drift
+              </Title>
+            </CardHeader>
+            <CardBody>
+              {baseline.environments.length === 0 ? (
+                <Content component="p" className="aam-muted">
+                  Register and sync AAP environments to compare controller settings and named resources.
+                </Content>
+              ) : baseline.drift.length === 0 ? (
+                <Content component="p">
+                  Collected controller settings, organizations, execution environments, and instance groups match across {baseline.environments.length} environment(s).
+                </Content>
+              ) : (
+                <Stack hasGutter>
+                  <StackItem>
+                    <Content component="p" className="aam-muted">
+                      These values differ across registered AAP environments. Create a remediable policy to push the desired setting or missing resource.
+                    </Content>
+                  </StackItem>
+                  {baseline.drift.map((item) => (
+                    <Card key={`${item.kind}-${item.name}`} isCompact>
+                      <CardBody>
+                        <Grid hasGutter>
+                          <GridItem md={3}>
+                            <Content component="small" className="aam-muted">
+                              {item.kind}
+                            </Content>
+                            <div>{item.name}</div>
+                          </GridItem>
+                          <GridItem md={9}>
+                            <div className="aam-link-cluster">
+                              {Object.entries(item.values).map(([environmentName, value]) => (
+                                <Label key={`${item.kind}-${item.name}-${environmentName}`} isCompact>
+                                  {environmentName}: {typeof value === "string" ? value : JSON.stringify(value)}
+                                </Label>
+                              ))}
+                            </div>
+                          </GridItem>
+                        </Grid>
+                      </CardBody>
+                    </Card>
+                  ))}
+                </Stack>
+              )}
+            </CardBody>
+          </Card>
         </StackItem>
       ) : null}
 
@@ -235,17 +346,32 @@ export function PoliciesPage() {
                     </StackItem>
                     {canManage ? (
                       <StackItem>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          isDisabled={!policy.enabled || pushingId === policy.id}
-                          isLoading={pushingId === policy.id}
-                          onClick={() => {
-                            void pushPolicy(policy);
-                          }}
-                        >
-                          Push to fleet
-                        </Button>
+                        <div className="aam-link-cluster">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            isDisabled={!policy.enabled || pushingId === policy.id}
+                            isLoading={pushingId === policy.id}
+                            onClick={() => {
+                              void pushPolicy(policy);
+                            }}
+                          >
+                            Evaluate fleet
+                          </Button>
+                          {isRemediable(policy.rule) ? (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              isDisabled={!policy.enabled || remediatingId === policy.id}
+                              isLoading={remediatingId === policy.id}
+                              onClick={() => {
+                                void remediatePolicy(policy);
+                              }}
+                            >
+                              Remediate noncompliant
+                            </Button>
+                          ) : null}
+                        </div>
                       </StackItem>
                     ) : null}
                   </Stack>
@@ -274,7 +400,7 @@ export function PoliciesPage() {
                   </StackItem>
                   <StackItem>
                     <Content component="p" className="aam-muted">
-                      Recent compliance outcomes across every managed environment.
+                      Recent compliance outcomes. Evaluate fleet queries each AAP controller live, then records the result below.
                     </Content>
                   </StackItem>
                 </Stack>
@@ -369,6 +495,76 @@ export function PoliciesPage() {
         <ModalBody>
           <PolicyForm busy={creating} onSubmit={createPolicy} />
         </ModalBody>
+      </Modal>
+
+      <Modal
+        variant="medium"
+        isOpen={evaluation !== null}
+        onClose={() => setEvaluation(null)}
+        aria-labelledby="fleet-evaluation-title"
+      >
+        <ModalHeader
+          title={evaluation?.kind === "remediate" ? "Remediation results" : "Fleet evaluation results"}
+          labelId="fleet-evaluation-title"
+        />
+        <ModalBody>
+          {evaluation ? (
+            <Stack hasGutter>
+              <StackItem>
+                <Alert
+                  isInline
+                  variant={evaluationVariant(evaluation.result)}
+                  title={`${evaluation.policyName}: ${evaluation.kind === "remediate" ? remediateSummary(evaluation.result as PolicyRemediateResult) : pushSummary(evaluation.result)}`}
+                />
+              </StackItem>
+              {evaluation.result.checks?.length ? (
+                evaluation.result.checks.map((check) => (
+                  <Card key={check.environment_id} isCompact>
+                    <CardBody>
+                      <Grid hasGutter>
+                        <GridItem md={4}>
+                          <Content component="small" className="aam-muted">
+                            Environment
+                          </Content>
+                          <div>
+                            <LinkButton to={`/environments/${check.environment_id}`} variant="link" isInline>
+                              {check.environment_name}
+                            </LinkButton>
+                          </div>
+                        </GridItem>
+                        <GridItem md={3}>
+                          <Content component="small" className="aam-muted">
+                            Status
+                          </Content>
+                          <div>
+                            <StatusPill status={check.compliance} />
+                          </div>
+                        </GridItem>
+                        <GridItem md={5}>
+                          <Content component="small" className="aam-muted">
+                            Finding
+                          </Content>
+                          <div>{check.message}</div>
+                        </GridItem>
+                      </Grid>
+                    </CardBody>
+                  </Card>
+                ))
+              ) : (
+                <StackItem>
+                  <Content component="p">
+                    No registered AAP environments were available to check. Add an environment, then evaluate again.
+                  </Content>
+                </StackItem>
+              )}
+            </Stack>
+          ) : null}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="primary" onClick={() => setEvaluation(null)}>
+            Close
+          </Button>
+        </ModalFooter>
       </Modal>
     </Stack>
   );

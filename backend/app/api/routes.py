@@ -23,8 +23,10 @@ from app.schemas import (
     PolicyCreate,
     PolicyUpdate,
     PolicyPushResponse,
+    PolicyRemediateResponse,
     PolicyResponse,
     PolicyResultResponse,
+    ConfigBaselineResponse,
     RemoteActionRequest,
     RemoteActionResponse,
     RuntimeSettingsResponse,
@@ -44,6 +46,8 @@ from app.services.dashboard import build_dashboard
 from app.services.jobs import build_fleet_job_stats, build_fleet_jobs
 from app.services.monitoring import build_monitoring
 from app.services.policies import evaluate_fleet
+from app.services.platform_config import build_config_baseline, merge_controller_config
+from app.services.remediation import remediate_fleet
 from app.services.search import run_search
 
 logger = logging.getLogger(__name__)
@@ -451,7 +455,7 @@ def list_policies(
 
 
 @router.post("/policies", response_model=PolicyResponse, status_code=status.HTTP_201_CREATED)
-def create_policy(
+async def create_policy(
     payload: PolicyCreate,
     db: Session = Depends(get_db),
     _: UserContext = Depends(require_roles("aam.admin")),
@@ -472,6 +476,8 @@ def create_policy(
     db.commit()
     db.refresh(policy)
     if payload.enabled and payload.push_to_fleet:
+        environments = db.scalars(select(ManagedEnvironment).order_by(ManagedEnvironment.name)).all()
+        await _refresh_live_controller_config(list(environments))
         evaluate_fleet(db, policy_id=policy.id)
     return PolicyResponse.model_validate(policy)
 
@@ -506,7 +512,7 @@ def update_policy(
 
 
 @router.post("/policies/{policy_id}/push", response_model=PolicyPushResponse)
-def push_policy(
+async def push_policy(
     policy_id: str,
     db: Session = Depends(get_db),
     _: UserContext = Depends(require_roles("aam.admin")),
@@ -519,8 +525,44 @@ def push_policy(
             status_code=status.HTTP_409_CONFLICT,
             detail="Enable the policy before pushing it to managed environments",
         )
+    environments = db.scalars(select(ManagedEnvironment).order_by(ManagedEnvironment.name)).all()
+    refresh_errors = await _refresh_live_controller_config(list(environments))
     counts = evaluate_fleet(db, policy_id=policy.id)
+    for check in counts.get("checks") or []:
+        error = refresh_errors.get(check.get("environment_id", ""))
+        if error:
+            check["message"] = f"Live query failed ({error}); used last collected snapshot. {check['message']}"
     return PolicyPushResponse(policy_id=policy.id, **counts)
+
+
+@router.post("/policies/{policy_id}/remediate", response_model=PolicyRemediateResponse)
+async def remediate_policy(
+    policy_id: str,
+    db: Session = Depends(get_db),
+    user: UserContext = Depends(require_roles("aam.admin")),
+) -> PolicyRemediateResponse:
+    policy = db.get(PolicyDefinition, policy_id)
+    if policy is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Policy not found")
+    if not policy.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Enable the policy before pushing configuration to managed environments",
+        )
+    try:
+        counts = await remediate_fleet(db, policy_id=policy.id, requested_by=user.username)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return PolicyRemediateResponse(policy_id=policy.id, **counts)
+
+
+@router.get("/config-baseline", response_model=ConfigBaselineResponse)
+def config_baseline(
+    db: Session = Depends(get_db),
+    _: UserContext = Depends(require_roles("aam.viewer")),
+) -> ConfigBaselineResponse:
+    environments = db.scalars(select(ManagedEnvironment).order_by(ManagedEnvironment.name)).all()
+    return build_config_baseline(list(environments))
 
 
 @router.get("/policy-results", response_model=list[PolicyResultResponse])
@@ -743,3 +785,16 @@ async def execute_action(
         target=audit.target,
         response_body=audit.response_body,
     )
+
+
+async def _refresh_live_controller_config(environments: list[ManagedEnvironment]) -> dict[str, str]:
+    errors: dict[str, str] = {}
+    for environment in environments:
+        try:
+            connector = AAPConnector(environment)
+            config = await connector.collect_controller_config()
+            merge_controller_config(environment, config)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Live config refresh failed for %s", environment.name)
+            errors[environment.id] = str(exc)
+    return errors

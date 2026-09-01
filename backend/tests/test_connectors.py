@@ -69,6 +69,9 @@ async def test_controller_collect_uses_gateway_when_controller_url_missing():
         "projects",
         "credentials",
         "execution_environments",
+        "instance_groups",
+        "notification_templates",
+        "settings/all",
     ):
         respx.get(url__regex=rf"{gateway}/api/controller/v2/{path}/.*").mock(
             return_value=Response(200, json={"count": 0, "results": []})
