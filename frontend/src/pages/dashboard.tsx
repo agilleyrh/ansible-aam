@@ -40,6 +40,17 @@ function getProgressVariant(name: string): "danger" | "success" | "warning" | un
   return undefined;
 }
 
+function getCoverageVariant(resourceType: string): "danger" | "warning" | undefined {
+  const normalized = resourceType.toLowerCase().replace(/[_-]+/g, " ");
+  if (normalized.includes("failed") || normalized.includes("error") || normalized.includes("critical")) {
+    return "danger";
+  }
+  if (normalized.includes("disabled") || normalized.includes("warning")) {
+    return "warning";
+  }
+  return undefined;
+}
+
 export function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
@@ -287,7 +298,7 @@ export function DashboardPage() {
                       </StackItem>
                       <StackItem>
                         <Content component="p" className="aam-muted">
-                          Declared platform interfaces and integration patterns across the fleet.
+                          Declared platform interfaces and integration patterns. These are counts, not health.
                         </Content>
                       </StackItem>
                     </Stack>
@@ -304,7 +315,6 @@ export function DashboardPage() {
                           label: humanize(integration.replace("management:", "")),
                           value: count,
                           valueText: `${count} environments`,
-                          variant: "success",
                         }))}
                       />
                     )}
@@ -327,7 +337,7 @@ export function DashboardPage() {
                       </StackItem>
                       <StackItem>
                         <Content component="p" className="aam-muted">
-                          Resource types discovered from controller, EDA, and automation hub integrations.
+                          Inventory counts from the latest sync, not health. Failed jobs and similar types are highlighted.
                         </Content>
                       </StackItem>
                     </Stack>
@@ -344,7 +354,7 @@ export function DashboardPage() {
                           label: humanize(resourceType),
                           value: count,
                           valueText: `${count} discovered resources`,
-                          variant: "success",
+                          variant: getCoverageVariant(resourceType),
                         }))}
                       />
                     )}
