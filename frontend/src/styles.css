@@ -78,27 +78,22 @@ a {
   line-height: 1.2;
 }
 
-.aam-stat-row,
-.aam-monitoring-cards {
-  display: grid;
-  gap: var(--pf-t--global--spacer--md);
-  align-items: start;
+.aam-monitoring-page .pf-v6-l-grid,
+.aam-monitoring-page .pf-v5-l-grid {
+  width: 100%;
 }
 
-.aam-stat-row {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
-  gap: var(--pf-t--global--spacer--sm);
-}
-
-.aam-monitoring-cards {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+.aam-monitoring-page .pf-v6-l-grid__item,
+.aam-monitoring-page .pf-v5-l-grid__item {
+  min-width: 0;
 }
 
 .aam-stat-card,
 .aam-env-monitor-card,
-.aam-monitoring-cards > .pf-v6-c-card,
-.aam-monitoring-cards > .pf-v5-c-card {
+.aam-monitoring-page .pf-v6-c-card,
+.aam-monitoring-page .pf-v5-c-card {
   height: auto;
+  min-width: 0;
 }
 
 .aam-stat-card .pf-v6-c-card__body,
@@ -109,6 +104,12 @@ a {
 .aam-metric-bars--compact {
   display: grid;
   gap: var(--pf-t--global--spacer--sm);
+  min-width: 0;
+}
+
+.aam-metric-bars--compact .pf-v6-c-progress,
+.aam-metric-bars--compact .pf-v5-c-progress {
+  min-width: 0;
 }
 
 .aam-health-table {
@@ -117,9 +118,9 @@ a {
 }
 
 .aam-health-table__row {
-  display: grid;
-  grid-template-columns: 7rem 1fr;
-  gap: var(--pf-t--global--spacer--sm);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pf-t--global--spacer--xs) var(--pf-t--global--spacer--sm);
   align-items: center;
 }
 
@@ -127,17 +128,11 @@ a {
   display: flex;
   flex-wrap: wrap;
   gap: var(--pf-t--global--spacer--xs);
+  min-width: 0;
 }
 
 .aam-env-monitor-card {
   height: auto;
-}
-
-.aam-masthead-links {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--pf-t--global--spacer--sm);
 }
 
 .aam-sidebar-card {
@@ -218,8 +213,8 @@ a {
 
 .aam-summary-grid {
   display: grid;
-  gap: var(--pf-t--global--spacer--md);
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--pf-t--global--spacer--sm);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
 }
 
 .aam-summary-grid__item {
@@ -234,10 +229,6 @@ a {
 @media (max-width: 768px) {
   .aam-page-header {
     padding: var(--pf-t--global--spacer--md);
-  }
-
-  .aam-health-table__row {
-    grid-template-columns: 1fr;
   }
 
   .aam-topology-children {

@@ -7,7 +7,8 @@ import {
   CardBody,
   CardHeader,
   ExpandableSection,
-  Gallery,
+  Grid,
+  GridItem,
   Label,
   Stack,
   StackItem,
@@ -232,8 +233,10 @@ export function MonitoringPage() {
     },
   ];
 
+  const envSpan = environments.length === 1 ? 12 : 6;
+
   return (
-    <Stack hasGutter>
+    <Stack hasGutter className="aam-monitoring-page">
       <StackItem>
         <PageHeader
           section="Monitoring"
@@ -259,17 +262,25 @@ export function MonitoringPage() {
       ) : null}
 
       <StackItem>
-        <div className="aam-stat-row">
-          <StatCard label="Environments" value={data.environment_count} detail="Registered AAP estates" />
-          <StatCard label="Controllers monitored" value={controllerCount} detail="Controller collection enabled" />
-          <StatCard label="EDA activations" value={activationCount} detail="Activations across the fleet" />
-          <StatCard label="Hub collections" value={collectionCount} detail="Collections from automation hub" />
-        </div>
+        <Grid hasGutter>
+          <GridItem sm={6} xl={3}>
+            <StatCard label="Environments" value={data.environment_count} detail="Registered AAP estates" />
+          </GridItem>
+          <GridItem sm={6} xl={3}>
+            <StatCard label="Controllers monitored" value={controllerCount} detail="Controller collection enabled" />
+          </GridItem>
+          <GridItem sm={6} xl={3}>
+            <StatCard label="EDA activations" value={activationCount} detail="Activations across the fleet" />
+          </GridItem>
+          <GridItem sm={6} xl={3}>
+            <StatCard label="Hub collections" value={collectionCount} detail="Collections from automation hub" />
+          </GridItem>
+        </Grid>
       </StackItem>
 
       {environments.length === 0 ? (
         <StackItem>
-          <Card >
+          <Card>
             <CardBody>
               <EmptyState
                 title="No monitoring data yet"
@@ -286,165 +297,191 @@ export function MonitoringPage() {
       ) : (
         <>
           <StackItem>
-            <div className="aam-monitoring-cards">
-              <Card>
-                <CardHeader>
-                  <Title headingLevel="h2" size="lg">
-                    Fleet service readiness
-                  </Title>
-                </CardHeader>
-                <CardBody>
-                  <div className="aam-health-table">
-                    {serviceBreakdown.map((service) => (
-                      <div key={service.service} className="aam-health-table__row">
-                        <strong>{service.service.toUpperCase()}</strong>
-                        <div className="aam-health-table__counts">
-                          <Label color="green">{service.counts.healthy} healthy</Label>
-                          <Label color="orange">{service.counts.warning} warning</Label>
-                          <Label color="red">{service.counts.critical} critical</Label>
-                          <Label color="grey">{service.counts.not_configured} not configured</Label>
+            <Grid hasGutter>
+              <GridItem md={6}>
+                <Stack hasGutter>
+                  <StackItem>
+                    <Card>
+                      <CardHeader>
+                        <Title headingLevel="h2" size="lg">
+                          Fleet service readiness
+                        </Title>
+                      </CardHeader>
+                      <CardBody>
+                        <div className="aam-health-table">
+                          {serviceBreakdown.map((service) => (
+                            <div key={service.service} className="aam-health-table__row">
+                              <strong>{service.service.toUpperCase()}</strong>
+                              <div className="aam-health-table__counts">
+                                <Label color="green" isCompact>
+                                  {service.counts.healthy} healthy
+                                </Label>
+                                <Label color="orange" isCompact>
+                                  {service.counts.warning} warning
+                                </Label>
+                                <Label color="red" isCompact>
+                                  {service.counts.critical} critical
+                                </Label>
+                                <Label color="grey" isCompact>
+                                  {service.counts.not_configured} skipped
+                                </Label>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardBody>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <Title headingLevel="h2" size="lg">
-                    Operational signals
-                  </Title>
-                </CardHeader>
-                <CardBody>
-                  <MetricBarChart items={operationalSignals} emptyText="No operational signals collected yet." />
-                </CardBody>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <Title headingLevel="h2" size="lg">
-                    Environment health scores
-                  </Title>
-                </CardHeader>
-                <CardBody>
-                  <MetricBarChart
-                    items={environments.map((environment) => ({
-                      label: environment.name,
-                      value: getHealthScore(environment.summary),
-                      total: 100,
-                      valueText: `${getHealthScore(environment.summary)} of 100`,
-                      variant:
-                        getHealthScore(environment.summary) >= 85
-                          ? "success"
-                          : getHealthScore(environment.summary) >= 60
-                            ? "warning"
-                            : "danger",
-                    }))}
-                  />
-                </CardBody>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <Title headingLevel="h2" size="lg">
-                    Collection coverage
-                  </Title>
-                </CardHeader>
-                <CardBody>
-                  <MetricBarChart items={configurationCoverage} emptyText="No configuration coverage data available." />
-                </CardBody>
-              </Card>
-            </div>
+                      </CardBody>
+                    </Card>
+                  </StackItem>
+                  <StackItem>
+                    <Card>
+                      <CardHeader>
+                        <Title headingLevel="h2" size="lg">
+                          Environment health scores
+                        </Title>
+                      </CardHeader>
+                      <CardBody>
+                        <MetricBarChart
+                          items={environments.map((environment) => ({
+                            label: environment.name,
+                            value: getHealthScore(environment.summary),
+                            total: 100,
+                            valueText: `${getHealthScore(environment.summary)} of 100`,
+                            variant:
+                              getHealthScore(environment.summary) >= 85
+                                ? "success"
+                                : getHealthScore(environment.summary) >= 60
+                                  ? "warning"
+                                  : "danger",
+                          }))}
+                        />
+                      </CardBody>
+                    </Card>
+                  </StackItem>
+                </Stack>
+              </GridItem>
+              <GridItem md={6}>
+                <Stack hasGutter>
+                  <StackItem>
+                    <Card>
+                      <CardHeader>
+                        <Title headingLevel="h2" size="lg">
+                          Operational signals
+                        </Title>
+                      </CardHeader>
+                      <CardBody>
+                        <MetricBarChart items={operationalSignals} emptyText="No operational signals collected yet." />
+                      </CardBody>
+                    </Card>
+                  </StackItem>
+                  <StackItem>
+                    <Card>
+                      <CardHeader>
+                        <Title headingLevel="h2" size="lg">
+                          Collection coverage
+                        </Title>
+                      </CardHeader>
+                      <CardBody>
+                        <MetricBarChart items={configurationCoverage} emptyText="No configuration coverage data available." />
+                      </CardBody>
+                    </Card>
+                  </StackItem>
+                </Stack>
+              </GridItem>
+            </Grid>
           </StackItem>
 
           <StackItem>
-            <Card>
-              <CardHeader>
+            <Stack hasGutter>
+              <StackItem>
                 <Title headingLevel="h2" size="lg">
                   Environment monitoring profiles
                 </Title>
-              </CardHeader>
-              <CardBody>
-                <Gallery hasGutter minWidths={{ default: "280px", xl: "320px" }}>
+              </StackItem>
+              <StackItem>
+                <Grid hasGutter>
                   {environments.map((environment) => (
-                    <Card key={environment.id} className="aam-env-monitor-card" isCompact>
-                      <CardHeader>
-                        <Stack>
-                          <StackItem>
-                            <Title headingLevel="h3" size="md">
-                              {environment.name}
-                            </Title>
-                          </StackItem>
-                          <StackItem>
-                            <Content component="small" className="aam-muted">
-                              Last sync {formatDateTime(environment.last_synced_at)}
-                            </Content>
-                          </StackItem>
-                        </Stack>
-                      </CardHeader>
-                      <CardBody>
-                        <Stack hasGutter>
-                          <StackItem>
-                            <div className="aam-link-cluster">
-                              <StatusPill status={environment.status} />
-                              {monitoredServices.map((service) => (
-                                <Label key={`${environment.id}-${service}`} isCompact>
-                                  {service}: {getSnapshotHealth(environment.snapshots, service)}
-                                </Label>
-                              ))}
-                            </div>
-                          </StackItem>
-                          <StackItem>
-                            <ExpandableSection toggleText="Collection details">
-                              <Stack hasGutter>
-                                <StackItem>
-                                  <div className="aam-summary-grid">
-                                    {getCollectionProfile(environment).map((item) => (
-                                      <div key={`${environment.id}-${item.label}`} className="aam-summary-grid__item">
-                                        <Content component="small" className="aam-muted">
-                                          {item.label}
-                                        </Content>
-                                        <div>{item.value}</div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </StackItem>
-                                {monitoringPointGroups.map((group) => (
-                                  <StackItem key={`${environment.id}-${group.id}`}>
-                                    <Content component="small" className="aam-muted">
-                                      {group.title}
-                                    </Content>
+                    <GridItem key={environment.id} md={envSpan}>
+                      <Card className="aam-env-monitor-card" isCompact>
+                        <CardHeader>
+                          <Stack>
+                            <StackItem>
+                              <Title headingLevel="h3" size="md">
+                                {environment.name}
+                              </Title>
+                            </StackItem>
+                            <StackItem>
+                              <Content component="small" className="aam-muted">
+                                Last sync {formatDateTime(environment.last_synced_at)}
+                              </Content>
+                            </StackItem>
+                          </Stack>
+                        </CardHeader>
+                        <CardBody>
+                          <Stack hasGutter>
+                            <StackItem>
+                              <div className="aam-link-cluster">
+                                <StatusPill status={environment.status} />
+                                {monitoredServices.map((service) => (
+                                  <Label key={`${environment.id}-${service}`} isCompact>
+                                    {service}: {getSnapshotHealth(environment.snapshots, service)}
+                                  </Label>
+                                ))}
+                              </div>
+                            </StackItem>
+                            <StackItem>
+                              <ExpandableSection toggleText="Collection details">
+                                <Stack hasGutter>
+                                  <StackItem>
                                     <div className="aam-summary-grid">
-                                      {group.points.map((point) => (
-                                        <div key={`${environment.id}-${group.id}-${point.key}`} className="aam-summary-grid__item">
+                                      {getCollectionProfile(environment).map((item) => (
+                                        <div key={`${environment.id}-${item.label}`} className="aam-summary-grid__item">
                                           <Content component="small" className="aam-muted">
-                                            {point.label}
+                                            {item.label}
                                           </Content>
-                                          {point.key === "health" ? (
-                                            <div>
-                                              <StatusPill status={String(getMonitoringValue(environment.snapshots, point))} />
-                                            </div>
-                                          ) : (
-                                            <div>{formatMonitoringValue(point, getMonitoringValue(environment.snapshots, point))}</div>
-                                          )}
+                                          <div>{item.value}</div>
                                         </div>
                                       ))}
                                     </div>
                                   </StackItem>
-                                ))}
-                              </Stack>
-                            </ExpandableSection>
-                          </StackItem>
-                          <StackItem>
-                            <LinkButton to={`/environments/${environment.id}`} variant="secondary" size="sm">
-                              Open environment
-                            </LinkButton>
-                          </StackItem>
-                        </Stack>
-                      </CardBody>
-                    </Card>
+                                  {monitoringPointGroups.map((group) => (
+                                    <StackItem key={`${environment.id}-${group.id}`}>
+                                      <Content component="small" className="aam-muted">
+                                        {group.title}
+                                      </Content>
+                                      <div className="aam-summary-grid">
+                                        {group.points.map((point) => (
+                                          <div key={`${environment.id}-${group.id}-${point.key}`} className="aam-summary-grid__item">
+                                            <Content component="small" className="aam-muted">
+                                              {point.label}
+                                            </Content>
+                                            {point.key === "health" ? (
+                                              <div>
+                                                <StatusPill status={String(getMonitoringValue(environment.snapshots, point))} />
+                                              </div>
+                                            ) : (
+                                              <div>{formatMonitoringValue(point, getMonitoringValue(environment.snapshots, point))}</div>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </StackItem>
+                                  ))}
+                                </Stack>
+                              </ExpandableSection>
+                            </StackItem>
+                            <StackItem>
+                              <LinkButton to={`/environments/${environment.id}`} variant="secondary" size="sm">
+                                Open environment
+                              </LinkButton>
+                            </StackItem>
+                          </Stack>
+                        </CardBody>
+                      </Card>
+                    </GridItem>
                   ))}
-                </Gallery>
-              </CardBody>
-            </Card>
+                </Grid>
+              </StackItem>
+            </Stack>
           </StackItem>
         </>
       )}
