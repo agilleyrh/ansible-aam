@@ -8,16 +8,16 @@ type Props = {
 
 export function StatCard({ label, value, detail }: Props) {
   return (
-    <Card  isFullHeight>
+    <Card className="aam-stat-card">
       <CardBody>
-        <Stack hasGutter>
+        <Stack>
           <StackItem>
             <Content component="small" className="aam-stat-card__label">
               {label}
             </Content>
           </StackItem>
           <StackItem>
-            <Title headingLevel="h3" size="2xl">
+            <Title headingLevel="h3" size="xl">
               {value}
             </Title>
           </StackItem>

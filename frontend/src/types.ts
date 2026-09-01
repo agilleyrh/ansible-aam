@@ -116,6 +116,33 @@ export type Policy = {
   rule: Record<string, unknown>;
 };
 
+export type PolicyCreatePayload = {
+  name: string;
+  description: string;
+  severity: "low" | "medium" | "high" | "critical";
+  enabled: boolean;
+  scope: Record<string, unknown>;
+  rule: Record<string, unknown>;
+  push_to_fleet: boolean;
+};
+
+export type PolicyPushResult = {
+  policy_id: string;
+  evaluated: number;
+  compliant: number;
+  noncompliant: number;
+  unknown: number;
+  skipped: number;
+  environments: number;
+};
+
+export type CurrentUser = {
+  username: string;
+  email?: string | null;
+  roles: string[];
+  groups: string[];
+};
+
 export type PolicyResult = {
   id: string;
   environment_id: string;

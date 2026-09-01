@@ -1,5 +1,6 @@
 import type {
   ActivityEvent,
+  CurrentUser,
   DashboardResponse,
   EnvironmentDetail,
   EnvironmentMutationPayload,
@@ -8,6 +9,8 @@ import type {
   FleetJobStats,
   MonitoringResponse,
   Policy,
+  PolicyCreatePayload,
+  PolicyPushResult,
   PolicyResult,
   EnvironmentGroup,
   RemoteActionRequest,
@@ -89,9 +92,12 @@ export const api = {
   fleetTopology: (signal?: AbortSignal) => request<TopologyResponse>("/topology", { signal }),
   groups: (signal?: AbortSignal) => request<EnvironmentGroup[]>("/groups", { signal }),
   policies: (signal?: AbortSignal) => request<Policy[]>("/policies", { signal }),
+  createPolicy: (payload: PolicyCreatePayload) => request<Policy>("/policies", { method: "POST", body: payload }),
   updatePolicy: (id: string, payload: Partial<Pick<Policy, "enabled" | "name" | "description" | "severity" | "scope" | "rule">>) =>
     request<Policy>(`/policies/${id}`, { method: "PATCH", body: payload }),
+  pushPolicy: (id: string) => request<PolicyPushResult>(`/policies/${id}/push`, { method: "POST" }),
   policyResults: (signal?: AbortSignal) => request<PolicyResult[]>("/policy-results", { signal }),
+  me: (signal?: AbortSignal) => request<CurrentUser>("/me", { signal }),
   search: (q: string, signal?: AbortSignal) => request<SearchResult[]>(`/search?q=${encodeURIComponent(q)}`, { signal }),
   syncExecutions: (signal?: AbortSignal) => request<SyncExecution[]>("/sync-executions", { signal }),
   activity: (environmentId?: string, signal?: AbortSignal) =>

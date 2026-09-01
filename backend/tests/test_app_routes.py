@@ -19,3 +19,5 @@ def test_import_app():
     assert "/api/v1/healthz" in paths
     assert "/api/v1/topology" in paths
     assert "/api/v1/groups" in paths
+    assert "/api/v1/me" in paths
+    assert "/api/v1/policies/{policy_id}/push" in paths
