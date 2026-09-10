@@ -32,6 +32,13 @@ type RequestOptions = {
   signal?: AbortSignal;
 };
 
+function isAbortError(err: unknown): boolean {
+  return (
+    (err instanceof DOMException && err.name === "AbortError") ||
+    (err instanceof Error && (err.name === "AbortError" || err.message.toLowerCase().includes("aborted")))
+  );
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: HeadersInit = {
     Accept: "application/json",
@@ -46,12 +53,22 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     headers["Content-Type"] = "application/json";
   }
 
-  const response = await fetch(`${API_PREFIX}${path}`, {
-    method: options.method ?? "GET",
-    headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-    signal: options.signal,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_PREFIX}${path}`, {
+      method: options.method ?? "GET",
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: options.signal,
+    });
+  } catch (err) {
+    if (isAbortError(err) || options.signal?.aborted) {
+      throw err instanceof Error ? err : new Error("Request aborted");
+    }
+    throw new Error(
+      "The browser could not reach the AAM API. If a content blocker is enabled, allow this site, then retry.",
+    );
+  }
 
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
@@ -105,7 +122,7 @@ export const api = {
   search: (q: string, signal?: AbortSignal) => request<SearchResult[]>(`/search?q=${encodeURIComponent(q)}`, { signal }),
   syncExecutions: (signal?: AbortSignal) => request<SyncExecution[]>("/sync-executions", { signal }),
   activity: (environmentId?: string, signal?: AbortSignal) =>
-    request<ActivityEvent[]>(`/activity${environmentId ? `?environment_id=${encodeURIComponent(environmentId)}` : ""}`, {
+    request<ActivityEvent[]>(`/events${environmentId ? `?environment_id=${encodeURIComponent(environmentId)}` : ""}`, {
       signal,
     }),
   runtimeSettings: (signal?: AbortSignal) => request<RuntimeSettings>("/settings/runtime", { signal }),

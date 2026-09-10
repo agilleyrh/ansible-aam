@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { Alert, Bullseye, Card, CardBody, CardHeader, FormSelect, FormSelectOption, Gallery, Stack, StackItem, Content, Title } from "@patternfly/react-core";
+import { Alert, Bullseye, Button, Card, CardBody, CardHeader, FormSelect, FormSelectOption, Gallery, Stack, StackItem, Content, Title } from "@patternfly/react-core";
 
 import { api } from "../api";
 import { ActivityTable } from "../components/activity-table";
@@ -16,6 +16,7 @@ export function ActivityPage() {
   const [items, setItems] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     api.environments().then(setEnvironments).catch(() => {});
@@ -34,7 +35,7 @@ export function ActivityPage() {
         }
       })
       .catch((err: Error) => {
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && err.name !== "AbortError") {
           setError(err.message);
         }
       })
@@ -44,7 +45,7 @@ export function ActivityPage() {
         }
       });
     return () => controller.abort();
-  }, [selectedEnvironmentId]);
+  }, [selectedEnvironmentId, reloadToken]);
 
   if (loading && items.length === 0) {
     return (
@@ -57,7 +58,28 @@ export function ActivityPage() {
   }
 
   if (error && items.length === 0) {
-    return <Alert isInline variant="danger" title={`Activity stream unavailable: ${error}`} />;
+    return (
+      <Stack hasGutter>
+        <StackItem>
+          <Alert
+            isInline
+            variant="danger"
+            title={`Activity stream unavailable: ${error}`}
+            actionLinks={
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setError(null);
+                  setReloadToken((value) => value + 1);
+                }}
+              >
+                Retry
+              </Button>
+            }
+          />
+        </StackItem>
+      </Stack>
+    );
   }
 
   const syncCount = items.filter((item) => item.kind === "sync").length;
