@@ -9,6 +9,7 @@ import { LinkButton } from "../components/link-button";
 import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
 import type { ActivityEvent, EnvironmentSummary } from "../types";
+import { environmentKind } from "../utils";
 
 export function ActivityPage() {
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([]);
@@ -84,6 +85,7 @@ export function ActivityPage() {
 
   const syncCount = items.filter((item) => item.kind === "sync").length;
   const actionCount = items.filter((item) => item.kind === "action").length;
+  const executionCount = items.filter((item) => item.kind === "execution" || item.service === "orchestrator").length;
   const failedCount = items.filter((item) => item.status === "failed").length;
   const activeCount = items.filter((item) => item.status === "queued" || item.status === "running").length;
 
@@ -93,7 +95,7 @@ export function ActivityPage() {
         <PageHeader
           section="Activity"
           title="Fleet activity stream"
-          description="Review syncs, remote launches, repository syncs, and activation changes across the managed automation estate."
+          description="Review syncs, remote launches, repository syncs, activation changes, and Automation Orchestrator workflow executions across AAP and Orchestrator estates."
           actions={
             <>
               <LinkButton to="/environments" variant="secondary">
@@ -102,7 +104,11 @@ export function ActivityPage() {
               <FormSelect value={selectedEnvironmentId} onChange={(_, value) => setSelectedEnvironmentId(value)} aria-label="Filter activity by environment">
                 <FormSelectOption value="all" label="All environments" />
                 {environments.map((environment) => (
-                  <FormSelectOption key={environment.id} value={environment.id} label={environment.name} />
+                  <FormSelectOption
+                    key={environment.id}
+                    value={environment.id}
+                    label={`${environment.name} (${environmentKind(environment) === "orchestrator" ? "Orchestrator" : "AAP"})`}
+                  />
                 ))}
               </FormSelect>
             </>
@@ -121,6 +127,7 @@ export function ActivityPage() {
           <StatCard label="Events" value={items.length} detail="Latest stream entries loaded" />
           <StatCard label="Sync jobs" value={syncCount} detail="Collection and policy evaluation runs" />
           <StatCard label="Remote actions" value={actionCount} detail="Operator-initiated actions on managed services" />
+          <StatCard label="Orchestrator executions" value={executionCount} detail="Workflow executions collected from Automation Orchestrator" />
           <StatCard label="Needs attention" value={failedCount + activeCount} detail="Failed, queued, or running events" />
         </Gallery>
       </StackItem>
@@ -136,7 +143,7 @@ export function ActivityPage() {
               </StackItem>
               <StackItem>
                 <Content component="p" className="aam-muted">
-                  Ordered newest first and aligned to the activity-stream pattern used across controller and AAP.
+                  Ordered newest first. Includes AAM syncs, remote actions, and Automation Orchestrator workflow executions.
                 </Content>
               </StackItem>
             </Stack>
@@ -147,7 +154,7 @@ export function ActivityPage() {
             ) : items.length === 0 ? (
               <EmptyState
                 title="No activity yet"
-                description="Register an environment, queue a sync, or run a remote action to start populating the stream."
+                description="Register an environment, queue a sync, or run a remote action to start populating the stream. Orchestrator executions appear after a successful sync."
               />
             ) : (
               <ActivityTable items={items} showEnvironment={selectedEnvironmentId === "all"} />

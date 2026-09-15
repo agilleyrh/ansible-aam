@@ -218,7 +218,7 @@ export function PoliciesPage() {
         <PageHeader
           section="Governance"
           title="Fleet policies and compliance results"
-          description="Compare controller settings, organizations, execution environments, and instance groups across the fleet. Admins can create policies and push missing or drifted configuration onto noncompliant AAP environments."
+          description="Compare controller settings across AAP estates and Orchestrator configuration across Orchestrator estates. Admins can create policies and push missing or drifted configuration onto noncompliant environments."
           actions={
             canManage ? (
               <Button variant="primary" onClick={() => setIsCreateOpen(true)}>
@@ -251,11 +251,11 @@ export function PoliciesPage() {
             <CardBody>
               {baseline.environments.length === 0 ? (
                 <Content component="p" className="aam-muted">
-                  Register and sync AAP environments to compare controller settings and named resources.
+                  Register and sync AAP and Orchestrator environments to compare controller settings, Orchestrator settings, and named resources.
                 </Content>
               ) : baseline.drift.length === 0 ? (
                 <Content component="p">
-                  Collected controller settings, organizations, execution environments, and instance groups match across {baseline.environments.length} environment(s).
+                  Collected controller settings, Automation Orchestrator settings, organizations, execution environments, and instance groups match across {baseline.environments.length} environment(s).
                 </Content>
               ) : (
                 <Stack hasGutter>
@@ -270,7 +270,7 @@ export function PoliciesPage() {
                         <Grid hasGutter>
                           <GridItem md={3}>
                             <Content component="small" className="aam-muted">
-                              {item.kind}
+                              {item.kind === "orchestrator_setting" ? "Orchestrator setting" : item.kind}
                             </Content>
                             <div>{item.name}</div>
                           </GridItem>
@@ -400,7 +400,7 @@ export function PoliciesPage() {
                   </StackItem>
                   <StackItem>
                     <Content component="p" className="aam-muted">
-                      Recent compliance outcomes. Evaluate fleet queries each AAP controller live, then records the result below.
+                      Recent compliance outcomes, including Automation Orchestrator policies. Evaluate fleet queries matching environments, then records the result below.
                     </Content>
                   </StackItem>
                 </Stack>

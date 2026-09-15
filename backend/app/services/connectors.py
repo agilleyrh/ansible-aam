@@ -11,7 +11,7 @@ import httpx
 from app.config import get_settings
 from app.models import ManagedEnvironment
 from app.security import decrypt_secret
-from app.services.platform_config import sanitize_controller_settings
+from app.services.platform_config import sanitize_controller_settings, sanitize_orchestrator_settings
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,48 @@ SERVICE_LABELS = {
     "controller": "Controller",
     "eda": "Event-Driven Ansible",
     "hub": "Automation Hub",
+    "orchestrator": "Automation Orchestrator",
 }
+
+ENVIRONMENT_KIND_AAP = "aap"
+ENVIRONMENT_KIND_ORCHESTRATOR = "orchestrator"
+
+
+def environment_kind(environment: Any) -> str:
+    kind = getattr(environment, "kind", None)
+    if kind == ENVIRONMENT_KIND_ORCHESTRATOR:
+        return ENVIRONMENT_KIND_ORCHESTRATOR
+    return ENVIRONMENT_KIND_AAP
+
+
+def is_orchestrator_environment(environment: Any) -> bool:
+    return environment_kind(environment) == ENVIRONMENT_KIND_ORCHESTRATOR
+
+
+AO_JOB_STATUS_MAP = {
+    "completed": "successful",
+    "completed_with_errors": "failed",
+    "cancelled": "canceled",
+    "canceled": "canceled",
+    "paused": "waiting",
+}
+
+
+def normalize_orchestrator_job_status(status: str | None) -> str:
+    raw = str(status or "unknown").strip().lower() or "unknown"
+    return AO_JOB_STATUS_MAP.get(raw, raw)
+
+
+def _orchestrator_execution_matches(status: str | None, wanted: str | None | tuple[str, ...]) -> bool:
+    if wanted is None:
+        return True
+    raw = str(status or "").strip().lower()
+    normalized = normalize_orchestrator_job_status(status)
+    if isinstance(wanted, tuple):
+        wanted_set = {item.strip().lower() for item in wanted if item}
+        return normalized in wanted_set or raw in wanted_set
+    expected = wanted.strip().lower()
+    return normalized == expected or raw == expected
 
 
 def _collection_failure(service: str, exc: Exception) -> dict[str, Any]:
@@ -32,7 +73,7 @@ def _collection_failure(service: str, exc: Exception) -> dict[str, Any]:
         "error": error,
         "health_reason": f"{label} collection failed ({first_line}).",
         "health_action": (
-            f"Confirm {label} is running on the AAP environment, that the registered URL and credentials "
+            f"Confirm {label} is running, that the registered URL and credentials "
             "still work, then sync again from the environment page."
         ),
     }
@@ -66,6 +107,18 @@ DEFAULT_SERVICE_PATHS: dict[str, dict[str, str]] = {
     "hub": {
         "repositories": "/api/galaxy/v3/repositories/",
         "collections": "/api/galaxy/v3/plugin/ansible/search/collection-versions/",
+    },
+    "orchestrator": {
+        "health": "/health",
+        "version": "/api/v1/version",
+        "token": "/api/v1/auth/token",
+        "settings": "/api/v1/settings",
+        "categories": "/api/v1/settings/categories",
+        "workflows": "/api/v1/workflows",
+        "executions": "/api/v1/executions",
+        "projects": "/api/v1/projects",
+        "integrations": "/api/v1/integrations",
+        "approvals": "/api/v1/approvals",
     },
 }
 
@@ -110,6 +163,7 @@ class AAPConnector:
         self.service_paths = merge_service_paths(environment.service_paths)
         self._forwarded_headers = forwarded_headers or {}
         self._oauth2_token: str | None = None
+        self._orchestrator_token: str | None = None
         self.headers = self._build_headers()
 
     def _component_url(self, service: str) -> str | None:
@@ -118,10 +172,12 @@ class AAPConnector:
             "controller": self.environment.controller_url,
             "eda": self.environment.eda_url,
             "hub": self.environment.hub_url,
+            "orchestrator": getattr(self.environment, "orchestrator_url", None),
         }.get(service)
         if explicit:
             return explicit
         # AAP 2.5+ fronts controller, EDA, and hub on the platform gateway origin.
+        # Automation Orchestrator is a separate product with its own URL and identity.
         if service in {"controller", "eda", "hub"}:
             return self.environment.gateway_url
         return None
@@ -155,6 +211,8 @@ class AAPConnector:
             raise RuntimeError("OAuth2 auth_mode requires client_id and client_secret to be configured")
 
         base_url = self.environment.gateway_url or self.environment.controller_url
+        if is_orchestrator_environment(self.environment):
+            base_url = self._component_url("orchestrator") or base_url
         if not base_url:
             raise RuntimeError("No base URL available for OAuth2 token acquisition")
 
@@ -219,6 +277,129 @@ class AAPConnector:
             raise RuntimeError("Service account auth_mode requires an access token to be configured")
 
         return self.headers
+
+    async def _acquire_orchestrator_token(self) -> str:
+        if self._orchestrator_token:
+            return self._orchestrator_token
+
+        client_id = getattr(self.environment, "orchestrator_client_id", None) or getattr(self.environment, "client_id", None)
+        client_secret = decrypt_secret(getattr(self.environment, "encrypted_orchestrator_client_secret", None)) or decrypt_secret(
+            getattr(self.environment, "encrypted_client_secret", None)
+        )
+        base_url = self._component_url("orchestrator")
+        if not client_id or not client_secret or not base_url:
+            raise RuntimeError("Automation Orchestrator OAuth2 requires client ID, client secret, and URL")
+
+        token_path = self.service_paths.get("orchestrator", {}).get("token") or "/api/v1/auth/token"
+        async with httpx.AsyncClient(
+            timeout=self.settings.request_timeout_seconds,
+            verify=self.environment.verify_ssl,
+        ) as client:
+            response = await client.post(
+                urljoin(base_url.rstrip("/") + "/", token_path.lstrip("/")),
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                },
+                headers={"Accept": "application/json"},
+            )
+            response.raise_for_status()
+            token_data = response.json()
+            access_token = token_data.get("access_token")
+            if not access_token:
+                raise RuntimeError("Orchestrator token response missing access_token")
+            self._orchestrator_token = access_token
+            return access_token
+
+    async def _orchestrator_auth_headers(self) -> dict[str, str]:
+        headers: dict[str, str] = {"Accept": "application/json"}
+        token = decrypt_secret(getattr(self.environment, "encrypted_orchestrator_token", None)) or decrypt_secret(
+            getattr(self.environment, "encrypted_token", None)
+        )
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+            return headers
+
+        client_id = getattr(self.environment, "orchestrator_client_id", None) or getattr(self.environment, "client_id", None)
+        client_secret = decrypt_secret(getattr(self.environment, "encrypted_orchestrator_client_secret", None)) or decrypt_secret(
+            getattr(self.environment, "encrypted_client_secret", None)
+        )
+        if client_id and client_secret:
+            access_token = await self._acquire_orchestrator_token()
+            headers["Authorization"] = f"Bearer {access_token}"
+            return headers
+
+        aap_headers = await self._ensure_auth_headers()
+        authorization = aap_headers.get("Authorization")
+        if authorization:
+            headers["Authorization"] = authorization
+            return headers
+        raise RuntimeError(
+            "Automation Orchestrator requires a dedicated access token or client credentials"
+        )
+
+    async def _orchestrator_request_json(
+        self,
+        path: str | None,
+        *,
+        method: str = "GET",
+        params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | list[Any]:
+        base_url = self._component_url("orchestrator")
+        if not base_url or not path:
+            raise RuntimeError("Automation Orchestrator URL or path is not configured")
+        headers = await self._orchestrator_auth_headers()
+        async with httpx.AsyncClient(
+            timeout=self.settings.request_timeout_seconds,
+            verify=self.environment.verify_ssl,
+            headers=headers,
+        ) as client:
+            response = await client.request(
+                method,
+                urljoin(base_url.rstrip("/") + "/", path.lstrip("/")),
+                params=params,
+                json=json_body,
+                data=data,
+            )
+            response.raise_for_status()
+            if not response.content:
+                return {}
+            return response.json()
+
+    async def _orchestrator_list(self, path: str | None, *, limit: int = 20, extra_params: dict[str, Any] | None = None) -> tuple[int, list[dict[str, Any]]]:
+        if not path:
+            return 0, []
+        params = {"limit": limit, "include_total": True, **(extra_params or {})}
+        payload = await self._orchestrator_request_json(path, params=params)
+        if isinstance(payload, dict):
+            items = payload.get("resources") or payload.get("results") or payload.get("items") or []
+            records = [item for item in items if isinstance(item, dict)]
+            total = payload.get("total")
+            if total is None:
+                total = payload.get("count", len(records))
+            return int(total or 0), records
+        if isinstance(payload, list):
+            records = [item for item in payload if isinstance(item, dict)]
+            return len(records), records
+        return 0, []
+
+    async def _safe_orchestrator_list(
+        self,
+        path: str | None,
+        *,
+        limit: int = 20,
+        extra_params: dict[str, Any] | None = None,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        try:
+            return await self._orchestrator_list(path, limit=limit, extra_params=extra_params)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in {401, 403}:
+                logger.debug("Orchestrator list %s skipped: %s", path, exc)
+                return 0, []
+            raise
 
     async def _request_json(
         self,
@@ -370,12 +551,15 @@ class AAPConnector:
             return service, _collection_failure(service, exc), []
 
     async def collect(self) -> dict[str, Any]:
-        results = await asyncio.gather(
-            self._safe_collect("gateway", self.collect_gateway),
-            self._safe_collect("controller", self.collect_controller),
-            self._safe_collect("eda", self.collect_eda),
-            self._safe_collect("hub", self.collect_hub),
-        )
+        if is_orchestrator_environment(self.environment):
+            results = [await self._safe_collect("orchestrator", self.collect_orchestrator)]
+        else:
+            results = await asyncio.gather(
+                self._safe_collect("gateway", self.collect_gateway),
+                self._safe_collect("controller", self.collect_controller),
+                self._safe_collect("eda", self.collect_eda),
+                self._safe_collect("hub", self.collect_hub),
+            )
 
         summaries = {service: summary for service, summary, _ in results}
         resources = [resource for _, _, service_resources in results for resource in service_resources]
@@ -656,6 +840,42 @@ class AAPConnector:
             params["status"] = status
         return await self._controller_results(jobs_path, params=params, limit=limit)
 
+    async def list_orchestrator_executions(
+        self,
+        *,
+        status: str | None | tuple[str, ...] = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        if not self._component_url("orchestrator"):
+            return []
+        path = self.service_paths.get("orchestrator", {}).get("executions") or "/api/v1/executions"
+        fetch_limit = limit if status is None else max(limit * 3, 40)
+        _, records = await self._safe_orchestrator_list(path, limit=fetch_limit, extra_params={"sort": "-created_at"})
+        matched: list[dict[str, Any]] = []
+        for item in records:
+            if _orchestrator_execution_matches(item.get("status"), status):
+                matched.append(item)
+            if len(matched) >= limit:
+                break
+        return matched
+
+    async def get_orchestrator_execution_counts(self) -> dict[str, int]:
+        counts = {
+            "running": 0,
+            "pending": 0,
+            "waiting": 0,
+            "failed": 0,
+            "successful": 0,
+            "canceled": 0,
+            "error": 0,
+        }
+        records = await self.list_orchestrator_executions(limit=50)
+        for item in records:
+            key = normalize_orchestrator_job_status(item.get("status"))
+            if key in counts:
+                counts[key] += 1
+        return counts
+
     async def get_job_status_counts(self) -> dict[str, int]:
         if not self._component_url("controller"):
             return {}
@@ -818,6 +1038,191 @@ class AAPConnector:
         }
         return interesting
 
+    async def collect_orchestrator(self) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        base_url = self._component_url("orchestrator")
+        if not base_url:
+            return {"health": "not_configured"}, []
+
+        paths = self.service_paths.get("orchestrator", {})
+        try:
+            version_payload = await self._orchestrator_request_json(paths.get("version") or "/api/v1/version")
+            (
+                workflow_total,
+                workflows,
+            ), (
+                execution_total,
+                executions,
+            ), (
+                project_total,
+                projects,
+            ), (
+                integration_total,
+                integrations,
+            ), (
+                pending_approval_total,
+                pending_approvals,
+            ) = await asyncio.gather(
+                self._safe_orchestrator_list(paths.get("workflows"), limit=8),
+                self._safe_orchestrator_list(paths.get("executions"), limit=20, extra_params={"sort": "-created_at"}),
+                self._safe_orchestrator_list(paths.get("projects"), limit=8),
+                self._safe_orchestrator_list(paths.get("integrations"), limit=100),
+                self._safe_orchestrator_list(paths.get("approvals"), limit=8, extra_params={"status": "pending"}),
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return {"health": "not_configured"}, []
+            raise
+
+        enabled_workflows = sum(1 for item in workflows if item.get("is_enabled", True))
+        failed_executions = [
+            item
+            for item in executions
+            if str(item.get("status") or "").lower() in {"failed", "completed_with_errors"}
+        ]
+        running_executions = [
+            item
+            for item in executions
+            if str(item.get("status") or "").lower() in {"running", "pending", "paused"}
+        ]
+        unhealthy_integrations = [
+            item
+            for item in integrations
+            if item.get("validation_error")
+            or str(item.get("validation_status") or "available").lower() not in {"available", "healthy", "ok"}
+        ]
+
+        workflow_records = [
+            {
+                "id": item.get("id"),
+                "name": item.get("name"),
+                "is_enabled": item.get("is_enabled"),
+                "is_builtin": item.get("is_builtin"),
+                "current_version": item.get("current_version"),
+                "published_version_number": item.get("published_version_number"),
+                "has_validation_issues": item.get("has_validation_issues"),
+                "project_id": item.get("project_id"),
+            }
+            for item in workflows
+        ]
+        integration_records = [
+            {
+                "id": item.get("id"),
+                "name": item.get("name"),
+                "integration_type": item.get("integration_type"),
+                "enabled": item.get("enabled"),
+                "validation_status": item.get("validation_status"),
+                "refresh_status": item.get("refresh_status"),
+                "total_tool_count": item.get("total_tool_count"),
+                "enabled_tool_count": item.get("enabled_tool_count"),
+                "base_url": ((item.get("configuration") or {}) if isinstance(item.get("configuration"), dict) else {}).get(
+                    "base_url"
+                ),
+            }
+            for item in integrations
+        ]
+        project_records = [
+            {
+                "id": item.get("id"),
+                "name": item.get("name"),
+                "description": item.get("description"),
+                "is_default": item.get("is_default"),
+                "is_builtin": item.get("is_builtin"),
+            }
+            for item in projects
+        ]
+        execution_records = [
+            {
+                "id": item.get("id"),
+                "name": item.get("workflow_name") or item.get("name") or item.get("id"),
+                "status": item.get("status"),
+                "workflow_id": item.get("workflow_id"),
+                "created_at": item.get("created_at"),
+                "completed_at": item.get("completed_at"),
+            }
+            for item in executions
+        ]
+
+        resources = list(self._resource_records("orchestrator", "workflow", workflow_records))
+        resources.extend(self._resource_records("orchestrator", "integration", integration_records))
+        resources.extend(self._resource_records("orchestrator", "project", project_records))
+        resources.extend(self._resource_records("orchestrator", "execution", execution_records))
+
+        version = None
+        if isinstance(version_payload, dict):
+            version = version_payload.get("info_version") or version_payload.get("api_version") or version_payload.get("version")
+
+        summary: dict[str, Any] = {
+            "health": "healthy",
+            "version": version,
+            "workflow_count": workflow_total,
+            "enabled_workflow_count": enabled_workflows if workflows else workflow_total,
+            "execution_count": execution_total,
+            "failed_executions_recent": len(failed_executions),
+            "running_executions": len(running_executions),
+            "project_count": project_total,
+            "integration_count": integration_total,
+            "unhealthy_integration_count": len(unhealthy_integrations),
+            "pending_approval_count": pending_approval_total,
+            "ui_health": await self._orchestrator_ui_health(base_url),
+            "config": await self._collect_orchestrator_config(paths),
+        }
+
+        reasons: list[str] = []
+        actions: list[str] = []
+        if failed_executions:
+            reasons.append(f"{len(failed_executions)} recent failed workflow execution(s)")
+            actions.append("Open Automation Orchestrator executions, inspect the failures, and rerun or fix the workflow.")
+        if unhealthy_integrations:
+            names = ", ".join(str(item.get("name") or item.get("id")) for item in unhealthy_integrations[:3])
+            reasons.append(f"{len(unhealthy_integrations)} integration(s) are not available ({names})")
+            actions.append("Re-validate those integrations in Automation Orchestrator settings.")
+        if not workflow_total:
+            reasons.append("no workflows were returned")
+            actions.append("Create or publish a workflow if this environment should run orchestrator automations.")
+        if reasons:
+            summary["health"] = "warning"
+            summary["health_reason"] = "Automation Orchestrator is reachable, but " + " and ".join(reasons) + "."
+            summary["health_action"] = " ".join(actions)
+        return summary, resources
+
+    async def _orchestrator_ui_health(self, base_url: str) -> str | None:
+        path = self.service_paths.get("orchestrator", {}).get("health") or "/health"
+        try:
+            async with httpx.AsyncClient(
+                timeout=self.settings.request_timeout_seconds,
+                verify=self.environment.verify_ssl,
+            ) as client:
+                response = await client.get(urljoin(base_url.rstrip("/") + "/", path.lstrip("/")))
+                if response.status_code == 200:
+                    text = (response.text or "").strip()
+                    return text or "healthy"
+                return f"http_{response.status_code}"
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Orchestrator UI health skipped: %s", exc)
+            return None
+
+    async def _collect_orchestrator_config(self, paths: dict[str, str]) -> dict[str, Any]:
+        config: dict[str, Any] = {"settings": {}, "categories": []}
+        try:
+            _, settings = await self._safe_orchestrator_list(paths.get("settings"), limit=100)
+            config["settings"] = sanitize_orchestrator_settings(settings)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Orchestrator settings collection skipped: %s", exc)
+        try:
+            _, categories = await self._safe_orchestrator_list(paths.get("categories"), limit=50)
+            config["categories"] = [
+                {
+                    "slug": item.get("slug"),
+                    "name": item.get("name"),
+                    "description": item.get("description"),
+                }
+                for item in categories
+                if item.get("slug") or item.get("name")
+            ]
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Orchestrator setting categories skipped: %s", exc)
+        return config
+
     def _resource_records(
         self,
         service: str,
@@ -846,6 +1251,12 @@ class AAPConnector:
                     status = "configured"
                 elif resource_type in {"repository", "collection"}:
                     status = "available"
+                elif resource_type == "workflow":
+                    status = "enabled" if item.get("is_enabled", True) else "disabled"
+                elif resource_type == "integration":
+                    status = str(item.get("validation_status") or ("enabled" if item.get("enabled", True) else "disabled"))
+                elif resource_type == "execution":
+                    status = item.get("status") or "unknown"
                 else:
                     status = "unknown"
 

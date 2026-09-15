@@ -13,6 +13,7 @@ import {
 import { Link } from "react-router-dom";
 
 import { StatusPill } from "./status-pill";
+import { serviceLabel } from "../monitoring";
 import type { ActivityEvent } from "../types";
 import { formatDateTime, humanize } from "../utils";
 
@@ -52,7 +53,7 @@ export function ActivityTable({ items, showEnvironment = true }: Props) {
                 {humanize(item.kind)}
               </Label>
               <Label isCompact color="grey">
-                {item.service}
+                {serviceLabel(item.service)}
               </Label>
               <Label isCompact color="teal">
                 {humanize(item.operation)}

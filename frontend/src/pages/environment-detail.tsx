@@ -18,6 +18,7 @@ import {
   Gallery,
   Grid,
   GridItem,
+  Label,
   SearchInput,
   Stack,
   StackItem,
@@ -45,12 +46,16 @@ import {
   getCollectionProfile,
   getHealthScore,
   getMonitoringValue,
+  getSnapshot,
   getSnapshotHealth,
-  monitoredServices,
-  monitoringPointGroups,
+  monitoredServicesFor,
+  monitoringPointGroupsFor,
+  resourceTypeLabel,
+  serviceLabel,
+  serviceLabels,
 } from "../monitoring";
 import type { ActivityEvent, EnvironmentDetail, EnvironmentMutationPayload, RemoteActionName, Resource } from "../types";
-import { deploymentTypeLabel, formatDateTime, humanize, stringifyValue } from "../utils";
+import { deploymentTypeLabel, environmentKind, environmentKindLabel, formatDateTime, humanize, stringifyValue } from "../utils";
 
 type ResourceAction = {
   action: RemoteActionName;
@@ -153,6 +158,12 @@ export function EnvironmentDetailPage() {
       if (!payload.access_token) {
         delete updatePayload.access_token;
       }
+      if (!payload.orchestrator_client_secret) {
+        delete updatePayload.orchestrator_client_secret;
+      }
+      if (!payload.orchestrator_access_token) {
+        delete updatePayload.orchestrator_access_token;
+      }
 
       await api.updateEnvironment(environmentId, updatePayload);
       if (options.syncAfterSave) {
@@ -248,6 +259,7 @@ export function EnvironmentDetailPage() {
     );
   }
 
+  const isOrchestrator = environmentKind(environment) === "orchestrator";
   const services = Array.from(new Set(environment.resources.map((resource) => resource.service))).sort();
   const resourceTypes = Array.from(new Set(environment.resources.map((resource) => resource.resource_type))).sort();
   const normalizedQuery = query.trim().toLowerCase();
@@ -275,17 +287,68 @@ export function EnvironmentDetailPage() {
   const projectCount = environment.resources.filter((resource) => resource.resource_type === "project").length;
   const activationCount = environment.resources.filter((resource) => resource.resource_type === "activation").length;
   const hubContentCount = environment.resources.filter((resource) => resource.service === "hub").length;
+  const orchestratorSnapshot = getSnapshot(environment.snapshots, "orchestrator");
+  const orchestratorWorkflowCount =
+    Number(orchestratorSnapshot?.summary.workflow_count) ||
+    environment.resources.filter((resource) => resource.service === "orchestrator" && resource.resource_type === "workflow").length;
+  const orchestratorExecutionCount =
+    Number(orchestratorSnapshot?.summary.execution_count) ||
+    environment.resources.filter((resource) => resource.resource_type === "execution").length;
+  const orchestratorIntegrationCount =
+    Number(orchestratorSnapshot?.summary.integration_count) ||
+    environment.resources.filter((resource) => resource.resource_type === "integration").length;
+  const orchestratorProjectCount =
+    Number(orchestratorSnapshot?.summary.project_count) ||
+    environment.resources.filter((resource) => resource.service === "orchestrator" && resource.resource_type === "project").length;
+  const integrations = environment.resources.filter((resource) => resource.resource_type === "integration");
   const healthScore = getHealthScore(environment.summary);
   const { profile: capabilityProfile, extraCapabilities } = parseCapabilityProfile(environment.capabilities);
   const capabilitySummary = describeCapabilityProfile(capabilityProfile);
-  const endpointLinks = [
-    { label: "Open platform URL", href: environment.platform_url },
-    { label: "Open gateway URL", href: environment.gateway_url },
-    { label: "Open controller URL", href: environment.controller_url },
-    { label: "Open EDA URL", href: environment.eda_url },
-    { label: "Open automation hub URL", href: environment.hub_url },
-  ].filter((item): item is { label: string; href: string } => Boolean(item.href));
-  const footprintMetrics = [
+  const endpointLinks = isOrchestrator
+    ? [
+        { label: "Open Automation Orchestrator", href: environment.orchestrator_url || environment.platform_url },
+      ].filter((item): item is { label: string; href: string } => Boolean(item.href))
+    : [
+        { label: "Open platform URL", href: environment.platform_url },
+        { label: "Open gateway URL", href: environment.gateway_url },
+        { label: "Open controller URL", href: environment.controller_url },
+        { label: "Open EDA URL", href: environment.eda_url },
+        { label: "Open automation hub URL", href: environment.hub_url },
+      ].filter((item): item is { label: string; href: string } => Boolean(item.href));
+  const footprintMetrics = isOrchestrator
+    ? [
+        {
+          label: "Tracked resources",
+          value: environment.resources.length,
+          valueText: "Resources currently stored for this Orchestrator estate",
+          variant: "success" as const,
+        },
+        {
+          label: "Workflows",
+          value: orchestratorWorkflowCount,
+          valueText: "Workflows collected from Automation Orchestrator",
+          variant: "success" as const,
+        },
+        {
+          label: "Executions",
+          value: orchestratorExecutionCount,
+          valueText: "Workflow executions discovered",
+          variant: "success" as const,
+        },
+        {
+          label: "Integrations",
+          value: orchestratorIntegrationCount,
+          valueText: "Configured Orchestrator integrations",
+          variant: "success" as const,
+        },
+        {
+          label: "Projects",
+          value: orchestratorProjectCount,
+          valueText: "Orchestrator projects",
+          variant: "success" as const,
+        },
+      ]
+    : [
     {
       label: "Tracked resources",
       value: environment.resources.length,
@@ -325,10 +388,16 @@ export function EnvironmentDetailPage() {
           section="Environment detail"
           title={environment.name}
           description={
-            environment.description || "Managed AAP environment with registered endpoints, monitoring posture, inventory, and settings."
+            environment.description ||
+            (isOrchestrator
+              ? "Managed Automation Orchestrator estate with its own URL, health, workflows, executions, and integrations."
+              : "Managed AAP environment with registered endpoints, monitoring posture, inventory, and settings.")
           }
           actions={
             <>
+              <Label color={isOrchestrator ? "purple" : "blue"} isCompact>
+                {environmentKindLabel(environment)}
+              </Label>
               <StatusPill status={environment.status} />
               <Button type="button" variant="secondary" isLoading={syncing} isDisabled={syncing} onClick={handleSync}>
                 {syncing ? "Queueing..." : "Queue sync"}
@@ -363,8 +432,18 @@ export function EnvironmentDetailPage() {
           <StatCard label="Health score" value={String(healthScore || "n/a")} detail="Calculated from collected service health" />
           <StatCard label="Tracked resources" value={String(environment.resources.length)} detail="Current inventory stored in the hub" />
           <StatCard label="Last sync" value={formatDateTime(environment.last_synced_at)} detail="Latest successful collection timestamp" />
-          <StatCard label="Templates" value={templateCount} detail="Job templates and workflow templates" />
-          <StatCard label="EDA activations" value={activationCount} detail="Rulebook activations currently tracked" />
+          {isOrchestrator ? (
+            <>
+              <StatCard label="Workflows" value={orchestratorWorkflowCount} detail="Workflows collected from this Orchestrator estate" />
+              <StatCard label="Executions" value={orchestratorExecutionCount} detail="Workflow executions discovered" />
+              <StatCard label="Integrations" value={orchestratorIntegrationCount} detail="Configured Orchestrator integrations" />
+            </>
+          ) : (
+            <>
+              <StatCard label="Templates" value={templateCount} detail="Job templates and workflow templates" />
+              <StatCard label="EDA activations" value={activationCount} detail="Rulebook activations currently tracked" />
+            </>
+          )}
         </Gallery>
       </StackItem>
 
@@ -395,6 +474,10 @@ export function EnvironmentDetailPage() {
                           <StackItem>
                             <DescriptionList isCompact isHorizontal columnModifier={{ default: "1Col" }}>
                               <DescriptionListGroup>
+                                <DescriptionListTerm>Product</DescriptionListTerm>
+                                <DescriptionListDescription>{environmentKindLabel(environment)}</DescriptionListDescription>
+                              </DescriptionListGroup>
+                              <DescriptionListGroup>
                                 <DescriptionListTerm>Infrastructure</DescriptionListTerm>
                                 <DescriptionListDescription>{deploymentTypeLabel(environment.deployment_type)}</DescriptionListDescription>
                               </DescriptionListGroup>
@@ -406,6 +489,13 @@ export function EnvironmentDetailPage() {
                                 <DescriptionListTerm>Cluster / project</DescriptionListTerm>
                                 <DescriptionListDescription>{stringifyValue(environment.infrastructure?.cluster_or_project)}</DescriptionListDescription>
                               </DescriptionListGroup>
+                              {isOrchestrator ? (
+                                <DescriptionListGroup>
+                                  <DescriptionListTerm>Orchestrator URL</DescriptionListTerm>
+                                  <DescriptionListDescription>{environment.orchestrator_url || environment.platform_url || "Not configured"}</DescriptionListDescription>
+                                </DescriptionListGroup>
+                              ) : (
+                                <>
                               <DescriptionListGroup>
                                 <DescriptionListTerm>Platform URL</DescriptionListTerm>
                                 <DescriptionListDescription>{environment.platform_url || "Not set"}</DescriptionListDescription>
@@ -426,6 +516,8 @@ export function EnvironmentDetailPage() {
                                 <DescriptionListTerm>Automation Hub URL</DescriptionListTerm>
                                 <DescriptionListDescription>{environment.hub_url || "Not configured"}</DescriptionListDescription>
                               </DescriptionListGroup>
+                                </>
+                              )}
                             </DescriptionList>
                           </StackItem>
                           <StackItem>
@@ -486,6 +578,7 @@ export function EnvironmentDetailPage() {
                 </Grid>
               </StackItem>
 
+              {!isOrchestrator ? (
               <StackItem>
                 <Grid hasGutter>
                   <GridItem lg={6}>
@@ -516,7 +609,13 @@ export function EnvironmentDetailPage() {
                       </CardBody>
                     </Card>
                   </GridItem>
-                  <GridItem lg={6}>
+                  </Grid>
+              </StackItem>
+              ) : null}
+
+              <StackItem>
+                <Grid hasGutter>
+                  <GridItem span={12}>
                     <Card  isFullHeight>
                       <CardHeader>
                         <Grid hasGutter style={{ width: "100%" }}>
@@ -611,10 +710,10 @@ export function EnvironmentDetailPage() {
                       </CardHeader>
                       <CardBody>
                         <div className="aam-summary-grid">
-                          {monitoredServices.map((service) => (
+                          {monitoredServicesFor(environment).map((service) => (
                             <div key={`${environment.id}-${service}`} className="aam-summary-grid__item">
                               <Content component="small" className="aam-muted">
-                                {service.toUpperCase()}
+                                {serviceLabels[service] ?? service.toUpperCase()}
                               </Content>
                               <div>
                                 <StatusPill status={getSnapshotHealth(environment.snapshots, service)} />
@@ -663,14 +762,14 @@ export function EnvironmentDetailPage() {
                       </StackItem>
                       <StackItem>
                         <Content component="p" className="aam-muted">
-                          A single view of the common gateway, controller, EDA, and automation hub signals collected for this environment.
+                          A single view of the signals collected for this {isOrchestrator ? "Automation Orchestrator" : "Ansible Automation Platform"} estate.
                         </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
                   <CardBody>
                     <Stack hasGutter>
-                      {monitoringPointGroups.map((group) => (
+                      {monitoringPointGroupsFor(environment).map((group) => (
                         <StackItem key={`${environment.id}-${group.id}`}>
                           <Card  isCompact>
                             <CardHeader>
@@ -726,7 +825,7 @@ export function EnvironmentDetailPage() {
                           </StackItem>
                           <StackItem>
                             <Content component="p" className="aam-muted">
-                              Raw summaries for each registered AAP component.
+                              Raw summaries for each registered {isOrchestrator ? "Orchestrator" : "AAP"} component.
                             </Content>
                           </StackItem>
                         </Stack>
@@ -752,7 +851,7 @@ export function EnvironmentDetailPage() {
                               <Grid hasGutter style={{ width: "100%" }}>
                                 <GridItem md={8}>
                                   <Title headingLevel="h3" size="md">
-                                    {snapshot.service.toUpperCase()}
+                                    {serviceLabels[snapshot.service] ?? snapshot.service.toUpperCase()}
                                   </Title>
                                 </GridItem>
                                 <GridItem md={4} style={{ textAlign: "right" }}>
@@ -793,7 +892,9 @@ export function EnvironmentDetailPage() {
                       </StackItem>
                       <StackItem>
                         <Content component="p" className="aam-muted">
-                          Controller, EDA, and automation hub resources with the direct actions that map to upstream AAP workflows.
+                          {isOrchestrator
+                            ? "Workflows, executions, projects, and integrations collected from this Automation Orchestrator estate."
+                            : "Controller, EDA, and automation hub resources with the direct actions that map to upstream AAP workflows."}
                         </Content>
                       </StackItem>
                     </Stack>
@@ -822,7 +923,7 @@ export function EnvironmentDetailPage() {
                               <FormSelect value={serviceFilter} onChange={(_, value) => setServiceFilter(value)} aria-label="Filter by service">
                                 <FormSelectOption value="all" label="All services" />
                                 {services.map((service) => (
-                                  <FormSelectOption key={service} value={service} label={service} />
+                                  <FormSelectOption key={service} value={service} label={serviceLabel(service)} />
                                 ))}
                               </FormSelect>
                             </GridItem>
@@ -830,7 +931,7 @@ export function EnvironmentDetailPage() {
                               <FormSelect value={typeFilter} onChange={(_, value) => setTypeFilter(value)} aria-label="Filter by resource type">
                                 <FormSelectOption value="all" label="All resource types" />
                                 {resourceTypes.map((resourceType) => (
-                                  <FormSelectOption key={resourceType} value={resourceType} label={humanize(resourceType)} />
+                                  <FormSelectOption key={resourceType} value={resourceType} label={resourceTypeLabel(resourceType)} />
                                 ))}
                               </FormSelect>
                             </GridItem>
@@ -866,13 +967,13 @@ export function EnvironmentDetailPage() {
                                         <Content component="small" className="aam-muted">
                                           Service
                                         </Content>
-                                        <div>{resource.service}</div>
+                                        <div>{serviceLabel(resource.service)}</div>
                                       </GridItem>
                                       <GridItem lg={2}>
                                         <Content component="small" className="aam-muted">
                                           Type
                                         </Content>
-                                        <div>{humanize(resource.resource_type)}</div>
+                                        <div>{resourceTypeLabel(resource.resource_type)}</div>
                                       </GridItem>
                                       <GridItem lg={2}>
                                         <Content component="small" className="aam-muted">
@@ -920,6 +1021,98 @@ export function EnvironmentDetailPage() {
               </StackItem>
             </Stack>
           </Tab>
+
+          {isOrchestrator ? (
+            <Tab eventKey="integrations" title="Integrations">
+              <Stack hasGutter className="aam-tab-panel">
+                <StackItem>
+                  <Card>
+                    <CardHeader>
+                      <Stack>
+                        <StackItem>
+                          <Title headingLevel="h2" size="lg">
+                            Orchestrator integrations
+                          </Title>
+                        </StackItem>
+                        <StackItem>
+                          <Content component="p" className="aam-muted">
+                            Every integration collected from this Automation Orchestrator estate, including type, validation, and tool coverage.
+                          </Content>
+                        </StackItem>
+                      </Stack>
+                    </CardHeader>
+                    <CardBody>
+                      {integrations.length === 0 ? (
+                        <EmptyState
+                          title="No integrations collected yet"
+                          description="Queue a sync after Orchestrator credentials are valid to list AAP, ITSM, and other integrations configured here."
+                          action={
+                            <Button type="button" variant="primary" onClick={handleSync}>
+                              Queue sync
+                            </Button>
+                          }
+                        />
+                      ) : (
+                        <Stack hasGutter>
+                          {integrations.map((resource) => {
+                            const metadata = resource.metadata_json || {};
+                            return (
+                              <StackItem key={resource.id}>
+                                <Card isCompact>
+                                  <CardBody>
+                                    <Grid hasGutter>
+                                      <GridItem lg={4}>
+                                        <Title headingLevel="h3" size="md">
+                                          {resource.name}
+                                        </Title>
+                                        <Content component="small" className="aam-muted">
+                                          {String(metadata.integration_type ?? resource.external_id)}
+                                        </Content>
+                                      </GridItem>
+                                      <GridItem lg={2}>
+                                        <Content component="small" className="aam-muted">
+                                          Status
+                                        </Content>
+                                        <div>
+                                          <StatusPill status={resource.status} />
+                                        </div>
+                                      </GridItem>
+                                      <GridItem lg={2}>
+                                        <Content component="small" className="aam-muted">
+                                          Enabled
+                                        </Content>
+                                        <div>{stringifyValue(metadata.enabled)}</div>
+                                      </GridItem>
+                                      <GridItem lg={2}>
+                                        <Content component="small" className="aam-muted">
+                                          Tools
+                                        </Content>
+                                        <div>
+                                          {metadata.enabled_tool_count != null || metadata.total_tool_count != null
+                                            ? `${stringifyValue(metadata.enabled_tool_count)} / ${stringifyValue(metadata.total_tool_count)}`
+                                            : "Not reported"}
+                                        </div>
+                                      </GridItem>
+                                      <GridItem lg={2}>
+                                        <Content component="small" className="aam-muted">
+                                          Target
+                                        </Content>
+                                        <div>{stringifyValue(metadata.base_url)}</div>
+                                      </GridItem>
+                                    </Grid>
+                                  </CardBody>
+                                </Card>
+                              </StackItem>
+                            );
+                          })}
+                        </Stack>
+                      )}
+                    </CardBody>
+                  </Card>
+                </StackItem>
+              </Stack>
+            </Tab>
+          ) : null}
 
           <Tab eventKey="settings" title="Settings">
             <Stack hasGutter className="aam-tab-panel">

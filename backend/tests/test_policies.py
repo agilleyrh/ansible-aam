@@ -13,6 +13,7 @@ def test_require_version_prefix_matches():
         controller_url=None,
         eda_url=None,
         hub_url="https://hub.example",
+        orchestrator_url=None,
         gateway_url="https://aap.example",
         tags=[],
     )
@@ -20,12 +21,37 @@ def test_require_version_prefix_matches():
     assert state == "compliant"
 
 
+def test_scope_kind_separates_aap_and_orchestrator():
+    policy = SimpleNamespace(scope={"kind": "orchestrator"}, rule={})
+    orchestrator = SimpleNamespace(kind="orchestrator", capabilities={}, tags=[])
+    aap = SimpleNamespace(kind="aap", capabilities={}, tags=[])
+    assert _scope_matches(policy, orchestrator)
+    assert not _scope_matches(policy, aap)
+
+
 def test_scope_tags_require_all_listed_tags():
-    policy = SimpleNamespace(scope={"tags": ["prod", "east"]})
+    policy = SimpleNamespace(scope={"tags": ["prod", "east"]}, rule={})
     matching = SimpleNamespace(capabilities={}, tags=["prod", "east", "aap"])
     missing = SimpleNamespace(capabilities={}, tags=["prod"])
     assert _scope_matches(policy, matching)
     assert not _scope_matches(policy, missing)
+
+
+def test_component_hosts_match_gateway_without_gateway():
+    policy = SimpleNamespace(rule={"type": "component_hosts_match_gateway"}, scope={})
+    environment = SimpleNamespace(
+        gateway_url=None,
+        controller_url=None,
+        eda_url=None,
+        hub_url=None,
+        summary={},
+        capabilities={},
+        last_synced_at=None,
+        tags=[],
+    )
+    state, message, _ = _evaluate_rule(policy, environment)
+    assert state == "unknown"
+    assert "gateway" in message.lower()
 
 
 def test_openapi_policy_create_allows_fleet_push():
@@ -125,3 +151,72 @@ def test_sanitize_controller_settings_drops_secrets():
         }
     )
     assert cleaned == {"GALAXY_IGNORE_CERTS": False, "MAX_FORKS": 200}
+
+
+def test_component_enabled_detects_orchestrator_url():
+    policy = SimpleNamespace(rule={"type": "component_enabled", "service": "orchestrator"}, scope={})
+    configured = SimpleNamespace(
+        orchestrator_url="https://ao.example.com",
+        summary={},
+        capabilities={},
+        last_synced_at=None,
+        tags=[],
+    )
+    missing = SimpleNamespace(
+        orchestrator_url=None,
+        summary={},
+        capabilities={},
+        last_synced_at=None,
+        tags=[],
+    )
+    state, _, _ = _evaluate_rule(policy, configured)
+    assert state == "compliant"
+    state, _, _ = _evaluate_rule(policy, missing)
+    assert state == "noncompliant"
+
+
+def test_sanitize_orchestrator_settings_drops_prompts_and_secrets():
+    from app.services.platform_config import sanitize_orchestrator_settings
+
+    cleaned = sanitize_orchestrator_settings(
+        [
+            {"key": "logging.log_level", "effective_value": "INFO", "value_type": "string"},
+            {"key": "agentic.task_agent_system_prompt", "effective_value": "long prompt", "value_type": "string"},
+            {"key": "auth.api_token", "effective_value": "abc", "value_type": "string"},
+        ]
+    )
+    assert cleaned == {"logging.log_level": "INFO"}
+
+
+def test_max_failed_executions_uses_orchestrator_summary():
+    policy = SimpleNamespace(rule={"type": "max_failed_executions", "threshold": 1}, scope={})
+    healthy = SimpleNamespace(
+        summary={"service_summaries": {"orchestrator": {"failed_executions_recent": 0}}},
+        capabilities={},
+        last_synced_at=None,
+        tags=[],
+    )
+    failing = SimpleNamespace(
+        summary={"service_summaries": {"orchestrator": {"failed_executions_recent": 4}}},
+        capabilities={},
+        last_synced_at=None,
+        tags=[],
+    )
+    state, message, _ = _evaluate_rule(policy, healthy)
+    assert state == "compliant"
+    assert "Automation Orchestrator" in message
+    state, _, _ = _evaluate_rule(policy, failing)
+    assert state == "noncompliant"
+
+
+def test_component_enabled_labels_orchestrator():
+    policy = SimpleNamespace(rule={"type": "component_enabled", "service": "orchestrator"}, scope={})
+    environment = SimpleNamespace(
+        orchestrator_url="https://ao.example.com",
+        summary={},
+        capabilities={},
+        last_synced_at=None,
+        tags=[],
+    )
+    _, message, _ = _evaluate_rule(policy, environment)
+    assert "Automation Orchestrator" in message

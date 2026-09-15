@@ -1,3 +1,5 @@
+import type { EnvironmentKind } from "./types";
+
 export function formatDateTime(value: string | null | undefined, fallback = "Never"): string {
   if (!value) {
     return fallback;
@@ -52,4 +54,15 @@ export function stringifyValue(value: unknown): string {
   }
 
   return JSON.stringify(value);
+}
+
+export function environmentKind(value?: { kind?: string } | string | null): EnvironmentKind {
+  if (typeof value === "string") {
+    return value === "orchestrator" ? "orchestrator" : "aap";
+  }
+  return value?.kind === "orchestrator" ? "orchestrator" : "aap";
+}
+
+export function environmentKindLabel(value?: { kind?: string } | string | null): string {
+  return environmentKind(value) === "orchestrator" ? "Automation Orchestrator" : "Ansible Automation Platform";
 }

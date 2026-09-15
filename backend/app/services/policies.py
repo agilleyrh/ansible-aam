@@ -7,14 +7,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ManagedEnvironment, PolicyDefinition, PolicyResult
+from app.services.connectors import SERVICE_LABELS, environment_kind
 from app.services.platform_config import controller_config, eda_config
 
 
 DEFAULT_POLICIES = [
     {
         "name": "AAP 2.6 baseline",
-        "description": "All managed environments should remain on the 2.6 release train.",
+        "description": "All managed AAP environments should remain on the 2.6 release train.",
         "severity": "high",
+        "scope": {"kind": "aap"},
         "rule": {"type": "require_version_prefix", "prefix": "2.6"},
     },
     {
@@ -83,6 +85,27 @@ DEFAULT_POLICIES = [
         "rule": {"type": "capability_present", "capability": "mcp_endpoint"},
     },
     {
+        "name": "Automation Orchestrator configured",
+        "description": "Automation Orchestrator estates must have a reachable Orchestrator URL.",
+        "severity": "medium",
+        "scope": {"kind": "orchestrator"},
+        "rule": {"type": "component_enabled", "service": "orchestrator"},
+    },
+    {
+        "name": "Orchestrator workflows present",
+        "description": "Automation Orchestrator estates should have at least one workflow.",
+        "severity": "medium",
+        "scope": {"kind": "orchestrator"},
+        "rule": {"type": "min_service_summary_value", "service": "orchestrator", "key": "workflow_count", "threshold": 1},
+    },
+    {
+        "name": "Orchestrator execution failures",
+        "description": "Automation Orchestrator should not accumulate more than five recent failed workflow executions.",
+        "severity": "high",
+        "scope": {"kind": "orchestrator"},
+        "rule": {"type": "max_failed_executions", "threshold": 5},
+    },
+    {
         "name": "Activity stream enabled",
         "description": "Controller activity stream should stay enabled so fleet audit history is complete.",
         "severity": "medium",
@@ -147,12 +170,45 @@ def seed_default_policies(db: Session) -> None:
 
 def _scope_matches(policy: PolicyDefinition, environment: ManagedEnvironment) -> bool:
     capabilities = environment.capabilities or {}
+    required_kind = policy.scope.get("kind")
+    if required_kind and environment_kind(environment) != required_kind:
+        return False
     capability = policy.scope.get("capability")
     if capability and not capabilities.get(capability):
         return False
     required_tags = set(policy.scope.get("tags", []))
     if required_tags and not required_tags.issubset(set(environment.tags)):
         return False
+    if not _rule_applies_to_kind(policy, environment):
+        return False
+    return True
+
+
+def _rule_applies_to_kind(policy: PolicyDefinition, environment: ManagedEnvironment) -> bool:
+    kind = environment_kind(environment)
+    rule_type = str((policy.rule or {}).get("type") or "")
+    service = str((policy.rule or {}).get("service") or "")
+    aap_only = {
+        "controller_setting",
+        "max_failed_jobs",
+        "named_resource_present",
+        "component_hosts_match_gateway",
+        "require_version_prefix",
+    }
+    if kind == "orchestrator":
+        if rule_type in aap_only:
+            return False
+        if rule_type == "component_enabled" and service not in {"", "orchestrator"}:
+            return False
+        if rule_type == "min_service_summary_value" and service != "orchestrator":
+            return False
+    if kind == "aap":
+        if rule_type == "max_failed_executions":
+            return False
+        if rule_type == "component_enabled" and service == "orchestrator":
+            return False
+        if rule_type == "min_service_summary_value" and service == "orchestrator":
+            return False
     return True
 
 
@@ -181,9 +237,10 @@ def _evaluate_rule(policy: PolicyDefinition, environment: ManagedEnvironment) ->
     if rule_type == "component_enabled":
         service = str(rule.get("service"))
         configured = bool(getattr(environment, f"{service}_url", None))
+        label = SERVICE_LABELS.get(service, service)
         if configured:
-            return "compliant", f"{service.upper()} is configured for this environment", {"service": service}
-        return "noncompliant", f"{service.upper()} is not configured", {"service": service}
+            return "compliant", f"{label} is configured for this environment", {"service": service}
+        return "noncompliant", f"{label} is not configured", {"service": service}
 
     if rule_type == "max_failed_jobs":
         threshold = int(rule.get("threshold", 5))
@@ -191,6 +248,13 @@ def _evaluate_rule(policy: PolicyDefinition, environment: ManagedEnvironment) ->
         failed_jobs = int(controller.get("failed_jobs_recent", 0))
         state = "compliant" if failed_jobs <= threshold else "noncompliant"
         return state, f"Recent controller failures: {failed_jobs}", {"value": failed_jobs, "threshold": threshold}
+
+    if rule_type == "max_failed_executions":
+        threshold = int(rule.get("threshold", 5))
+        orchestrator = service_summaries.get("orchestrator", {})
+        failed_executions = int(orchestrator.get("failed_executions_recent", 0))
+        state = "compliant" if failed_executions <= threshold else "noncompliant"
+        return state, f"Recent Automation Orchestrator failures: {failed_executions}", {"value": failed_executions, "threshold": threshold}
 
     if rule_type == "min_health_score":
         threshold = int(rule.get("threshold", 85))
@@ -224,11 +288,14 @@ def _evaluate_rule(policy: PolicyDefinition, environment: ManagedEnvironment) ->
         service_summary = service_summaries.get(service, {})
         value = int(service_summary.get(key, 0))
         state = "compliant" if value >= threshold else "noncompliant"
-        return state, f"{service.upper()} {key.replace('_', ' ')} is {value}", {"service": service, "key": key, "value": value, "threshold": threshold}
+        label = SERVICE_LABELS.get(service, service)
+        return state, f"{label} {key.replace('_', ' ')} is {value}", {"service": service, "key": key, "value": value, "threshold": threshold}
 
     if rule_type == "component_hosts_match_gateway":
         from urllib.parse import urlparse
 
+        if not environment.gateway_url:
+            return "unknown", "No gateway URL is configured", {}
         gateway_host = urlparse(environment.gateway_url).hostname
         mismatches: list[dict[str, str | None]] = []
         for service in ("controller", "eda", "hub"):

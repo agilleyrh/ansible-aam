@@ -23,8 +23,9 @@ import { EmptyState } from "../components/empty-state";
 import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
 import { StatusPill } from "../components/status-pill";
+import { serviceLabel } from "../monitoring";
 import type { ControllerJob, EnvironmentSummary, FleetJobsResponse } from "../types";
-import { deploymentTypeLabel, formatDateTime } from "../utils";
+import { deploymentTypeLabel, environmentKind, formatDateTime } from "../utils";
 
 const STATUS_FILTERS = [
   { value: "active", label: "Active (running / pending / waiting)" },
@@ -37,11 +38,17 @@ const STATUS_FILTERS = [
   { value: "all", label: "All recent" },
 ];
 
-function canCancel(status: string): boolean {
-  return ["running", "pending", "waiting", "new"].includes(status.toLowerCase());
+const SOURCE_FILTERS = [
+  { value: "all", label: "All sources" },
+  { value: "controller", label: "Controller jobs" },
+  { value: "orchestrator", label: "Orchestrator executions" },
+];
+
+function canCancel(job: ControllerJob): boolean {
+  return (job.source ?? "controller") === "controller" && ["running", "pending", "waiting", "new"].includes(job.status.toLowerCase());
 }
 
-function resolveControllerUrl(job: ControllerJob): string | null {
+function resolveJobUrl(job: ControllerJob): string | null {
   if (job.url && /^https?:\/\//i.test(job.url)) {
     return job.url;
   }
@@ -54,6 +61,7 @@ export function JobsPage() {
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([]);
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "active");
   const [environmentFilter, setEnvironmentFilter] = useState(searchParams.get("environmentId") || "all");
+  const [sourceFilter, setSourceFilter] = useState(searchParams.get("source") || "all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -85,7 +93,7 @@ export function JobsPage() {
   }, [load]);
 
   async function cancelJob(job: ControllerJob) {
-    setCancelingId(`${job.environment_id}:${job.id}`);
+    setCancelingId(`${job.source ?? "controller"}:${job.environment_id}:${job.id}`);
     setError(null);
     setMessage(null);
     try {
@@ -105,15 +113,15 @@ export function JobsPage() {
   }
 
   const stats = data?.stats;
-  const jobs = data?.jobs ?? [];
+  const jobs = (data?.jobs ?? []).filter((job) => sourceFilter === "all" || (job.source ?? "controller") === sourceFilter);
 
   return (
     <Stack hasGutter>
       <StackItem>
         <PageHeader
           section="Operations"
-          title="Fleet jobs"
-          description="Watch live controller job pressure across every registered AAP environment and cancel active work without leaving the hub."
+          title="Fleet jobs and executions"
+          description="Watch live controller jobs from AAP estates and workflow executions from Automation Orchestrator estates without leaving the hub."
           actions={
             <Button type="button" variant="secondary" onClick={() => load().catch((err: Error) => setError(err.message))}>
               Refresh
@@ -171,7 +179,21 @@ export function JobsPage() {
               >
                 <FormSelectOption value="all" label="All environments" />
                 {environments.map((environment) => (
-                  <FormSelectOption key={environment.id} value={environment.id} label={environment.name} />
+                  <FormSelectOption
+                    key={environment.id}
+                    value={environment.id}
+                    label={`${environment.name} (${environmentKind(environment) === "orchestrator" ? "Orchestrator" : "AAP"})`}
+                  />
+                ))}
+              </FormSelect>
+              <FormSelect
+                id="jobs-source-filter"
+                value={sourceFilter}
+                aria-label="Job source filter"
+                onChange={(_, value) => setSourceFilter(value)}
+              >
+                {SOURCE_FILTERS.map((option) => (
+                  <FormSelectOption key={option.value} value={option.value} label={option.label} />
                 ))}
               </FormSelect>
             </Gallery>
@@ -183,7 +205,7 @@ export function JobsPage() {
         <Card>
           <CardHeader>
             <Title headingLevel="h2" size="lg">
-              Live jobs
+              Live jobs and executions
             </Title>
           </CardHeader>
           <CardBody>
@@ -192,14 +214,15 @@ export function JobsPage() {
             ) : jobs.length === 0 ? (
               <EmptyState
                 title="No jobs matched"
-                description="Register environments with controller endpoints, then refresh to pull live job activity."
+                description="Register AAP and Orchestrator environments, then refresh to pull live controller jobs and Orchestrator executions."
                 icon={ProcessAutomationIcon}
               />
             ) : (
-              <Table aria-label="Fleet controller jobs" variant="compact">
+              <Table aria-label="Fleet jobs and Orchestrator executions" variant="compact">
                 <Thead>
                   <Tr>
                     <Th>Job</Th>
+                    <Th>Source</Th>
                     <Th>Environment</Th>
                     <Th>Infrastructure</Th>
                     <Th>Status</Th>
@@ -210,8 +233,9 @@ export function JobsPage() {
                 </Thead>
                 <Tbody>
                   {jobs.map((job) => {
-                    const cancelKey = `${job.environment_id}:${job.id}`;
-                    const controllerUrl = resolveControllerUrl(job);
+                    const source = job.source ?? "controller";
+                    const cancelKey = `${source}:${job.environment_id}:${job.id}`;
+                    const jobUrl = resolveJobUrl(job);
                     return (
                       <Tr key={cancelKey}>
                         <Td dataLabel="Job">
@@ -221,6 +245,7 @@ export function JobsPage() {
                             {job.job_type ? ` · ${job.job_type}` : ""}
                           </div>
                         </Td>
+                        <Td dataLabel="Source">{serviceLabel(source)}</Td>
                         <Td dataLabel="Environment">
                           <Link to={`/environments/${job.environment_id}`}>{job.environment_name}</Link>
                         </Td>
@@ -232,12 +257,12 @@ export function JobsPage() {
                         <Td dataLabel="Elapsed">{typeof job.elapsed === "number" ? `${Math.round(job.elapsed)}s` : "—"}</Td>
                         <Td dataLabel="Actions">
                           <div className="aam-link-cluster">
-                            {controllerUrl ? (
-                              <Button component="a" href={controllerUrl} target="_blank" rel="noreferrer" variant="link" isInline>
+                            {jobUrl ? (
+                              <Button component="a" href={jobUrl} target="_blank" rel="noreferrer" variant="link" isInline>
                                 Open
                               </Button>
                             ) : null}
-                            {canCancel(job.status) ? (
+                            {canCancel(job) ? (
                               <Button
                                 type="button"
                                 variant="danger"
@@ -248,7 +273,7 @@ export function JobsPage() {
                                 Cancel
                               </Button>
                             ) : null}
-                            {!controllerUrl && !canCancel(job.status) ? "—" : null}
+                            {!jobUrl && !canCancel(job) ? "—" : null}
                           </div>
                         </Td>
                       </Tr>

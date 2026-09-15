@@ -21,6 +21,7 @@ export type CapabilityProfile = {
   metrics_enabled: boolean;
   automation_reports_enabled: boolean;
   ai_assistant_enabled: boolean;
+  orchestrator_expected: boolean;
 };
 
 export const knownCapabilityKeys = [
@@ -44,6 +45,7 @@ export const knownCapabilityKeys = [
   "metrics_enabled",
   "automation_reports_enabled",
   "ai_assistant_enabled",
+  "orchestrator_expected",
 ];
 
 function asString(value: unknown): string {
@@ -99,6 +101,7 @@ export function parseCapabilityProfile(capabilities: Record<string, unknown> | n
       metrics_enabled: asBoolean(source.metrics_enabled),
       automation_reports_enabled: asBoolean(source.automation_reports_enabled),
       ai_assistant_enabled: asBoolean(source.ai_assistant_enabled),
+      orchestrator_expected: asBoolean(source.orchestrator_expected),
     },
     extraCapabilities,
   };
@@ -140,6 +143,7 @@ export function buildCapabilities(profile: CapabilityProfile, extraCapabilities:
     "metrics_enabled",
     "automation_reports_enabled",
     "ai_assistant_enabled",
+    "orchestrator_expected",
   ];
   for (const key of booleanFields) {
     if (profile[key] === true) {
@@ -173,5 +177,6 @@ export function describeCapabilityProfile(profile: CapabilityProfile): Array<{ l
     { label: "Gateway-only access", value: profile.gateway_enforced ? "Expected" : "Optional" },
     { label: "Metrics and reports", value: profile.metrics_enabled || profile.automation_reports_enabled ? "Enabled" : "Disabled" },
     { label: "AI assist", value: profile.ai_assistant_enabled ? "Enabled" : "Disabled" },
+    { label: "Automation Orchestrator", value: profile.orchestrator_expected ? "Expected" : "Optional" },
   ];
 }

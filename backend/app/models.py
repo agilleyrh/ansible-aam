@@ -34,20 +34,27 @@ class ManagedEnvironment(Base, TimestampedMixin):
     capabilities: Mapped[dict] = mapped_column(JSON, default=dict)
     service_paths: Mapped[dict] = mapped_column(JSON, default=dict)
 
-    # Where this AAP estate runs: podman (RHEL), openshift, or public cloud.
+    # aap | orchestrator — Orchestrator is a separate product estate, not an AAP service.
+    kind: Mapped[str] = mapped_column(String(40), default="aap", index=True)
+
+    # Where this estate runs: podman (RHEL), openshift, or public cloud.
     deployment_type: Mapped[str] = mapped_column(String(40), default="podman", index=True)
     infrastructure: Mapped[dict] = mapped_column(JSON, default=dict)
 
     platform_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    gateway_url: Mapped[str] = mapped_column(String(500))
+    gateway_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     controller_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     eda_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     hub_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    orchestrator_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     auth_mode: Mapped[str] = mapped_column(String(40), default="oauth2")
     client_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     encrypted_client_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     encrypted_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    orchestrator_client_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    encrypted_orchestrator_client_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    encrypted_orchestrator_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     verify_ssl: Mapped[bool] = mapped_column(Boolean, default=True)
 
     sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=5)

@@ -19,6 +19,7 @@ type RuleType =
   | "require_version_prefix"
   | "max_sync_age_minutes"
   | "max_failed_jobs"
+  | "max_failed_executions"
   | "min_health_score"
   | "component_enabled"
   | "controller_setting"
@@ -39,6 +40,11 @@ const RULE_OPTIONS: Array<{ value: RuleType; label: string; help: string }> = [
     value: "max_failed_jobs",
     label: "Maximum recent failed jobs",
     help: "Controllers must stay at or below this recent failure count.",
+  },
+  {
+    value: "max_failed_executions",
+    label: "Maximum recent Orchestrator failures",
+    help: "Automation Orchestrator must stay at or below this recent failed execution count.",
   },
   {
     value: "max_sync_age_minutes",
@@ -225,6 +231,7 @@ export function PolicyForm({ busy, onSubmit }: Props) {
                 <FormSelectOption value="controller" label="Controller" />
                 <FormSelectOption value="eda" label="EDA" />
                 <FormSelectOption value="hub" label="Automation Hub" />
+                <FormSelectOption value="orchestrator" label="Automation Orchestrator" />
               </FormSelect>
             </FormGroup>
           </StackItem>

@@ -2,6 +2,8 @@ export type EnvironmentAuthMode = "oauth2" | "service_account" | "header_passthr
 
 export type DeploymentType = "podman" | "openshift" | "aws" | "gcp" | "azure" | "other";
 
+export type EnvironmentKind = "aap" | "orchestrator";
+
 export type EnvironmentSummary = {
   id: string;
   name: string;
@@ -10,6 +12,7 @@ export type EnvironmentSummary = {
   owner: string;
   tags: string[];
   groupings: string[];
+  kind?: EnvironmentKind;
   deployment_type: DeploymentType;
   infrastructure: Record<string, unknown>;
   status: string;
@@ -41,13 +44,16 @@ export type Resource = {
 
 export type EnvironmentDetail = EnvironmentSummary & {
   labels: Record<string, unknown>;
+  kind?: EnvironmentKind;
   platform_url: string | null;
-  gateway_url: string;
+  gateway_url: string | null;
   controller_url: string | null;
   eda_url: string | null;
   hub_url: string | null;
+  orchestrator_url: string | null;
   auth_mode: EnvironmentAuthMode;
   client_id: string | null;
+  orchestrator_client_id: string | null;
   verify_ssl: boolean;
   sync_interval_minutes: number;
   capabilities: Record<string, unknown>;
@@ -64,17 +70,22 @@ export type EnvironmentMutationPayload = {
   tags: string[];
   groupings: string[];
   labels: Record<string, unknown>;
+  kind?: EnvironmentKind;
   deployment_type: DeploymentType;
   infrastructure: Record<string, unknown>;
   platform_url: string | null;
-  gateway_url: string;
+  gateway_url: string | null;
   controller_url: string | null;
   eda_url: string | null;
   hub_url: string | null;
+  orchestrator_url: string | null;
   auth_mode: EnvironmentAuthMode;
   client_id: string | null;
   client_secret?: string | null;
   access_token?: string | null;
+  orchestrator_client_id?: string | null;
+  orchestrator_client_secret?: string | null;
+  orchestrator_access_token?: string | null;
   verify_ssl: boolean;
   sync_interval_minutes: number;
   capabilities: Record<string, unknown>;
@@ -256,7 +267,7 @@ export type RuntimeSettings = {
 
 export type ActivityEvent = {
   id: string;
-  kind: "sync" | "action";
+  kind: "sync" | "action" | "execution";
   environment_id: string;
   environment_name: string;
   service: string;
@@ -312,6 +323,7 @@ export type ControllerJob = {
   environment_name: string;
   deployment_type: string | null;
   url: string | null;
+  source?: "controller" | "orchestrator";
   metadata: Record<string, unknown>;
 };
 
@@ -321,6 +333,7 @@ export type EnvironmentJobStats = {
   deployment_type: string;
   status: string;
   controller_configured: boolean;
+  orchestrator_configured?: boolean;
   running: number;
   pending: number;
   waiting: number;

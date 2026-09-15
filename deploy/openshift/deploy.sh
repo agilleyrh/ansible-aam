@@ -106,6 +106,8 @@ inject_crc_route_host_aliases() {
   [[ -n "${host}" ]] && hostnames+=("${host}")
   host="$(oc -n aap-operator get route aap -o jsonpath='{.spec.host}' 2>/dev/null || true)"
   [[ -n "${host}" ]] && hostnames+=("${host}")
+  host="$(oc -n automation-orchestrator get route automation-orchestrator -o jsonpath='{.spec.host}' 2>/dev/null || true)"
+  [[ -n "${host}" ]] && hostnames+=("${host}")
   [[ ${#hostnames[@]} -gt 0 ]] || return 0
   log "Adding in-cluster DNS aliases via router-internal-default (${router_ip})"
   local payload hosts_json=""
@@ -126,6 +128,11 @@ inject_crc_route_host_aliases() {
 }
 
 inject_crc_route_host_aliases
+
+if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
+  log "Restarting API and UI so imagePullPolicy: Never picks up rebuilt :latest images"
+  oc -n "${NAMESPACE}" rollout restart deploy/aam-api deploy/aam-worker deploy/aam-scheduler deploy/aam-ui
+fi
 
 log "Waiting for AAM deployments"
 oc -n "${NAMESPACE}" rollout status deployment/aam-postgres --timeout=240s

@@ -26,7 +26,7 @@ import {
 } from "@patternfly/react-core";
 
 import { buildCapabilities, parseCapabilityProfile, type ManagementMode } from "../capabilities";
-import type { DeploymentType, EnvironmentAuthMode, EnvironmentDetail, EnvironmentMutationPayload } from "../types";
+import type { DeploymentType, EnvironmentAuthMode, EnvironmentDetail, EnvironmentKind, EnvironmentMutationPayload } from "../types";
 
 type SubmitOptions = {
   syncAfterSave: boolean;
@@ -54,6 +54,7 @@ type FormState = {
   tags: string;
   groupings: string;
   labels: string;
+  kind: EnvironmentKind;
   deployment_type: DeploymentType;
   region: string;
   cluster_or_project: string;
@@ -64,10 +65,14 @@ type FormState = {
   controller_url: string;
   eda_url: string;
   hub_url: string;
+  orchestrator_url: string;
   auth_mode: EnvironmentAuthMode;
   client_id: string;
   client_secret: string;
   access_token: string;
+  orchestrator_client_id: string;
+  orchestrator_client_secret: string;
+  orchestrator_access_token: string;
   verify_ssl: boolean;
   sync_interval_minutes: string;
   management_mode: ManagementMode;
@@ -90,6 +95,7 @@ type FormState = {
   metrics_enabled: boolean;
   automation_reports_enabled: boolean;
   ai_assistant_enabled: boolean;
+  orchestrator_expected: boolean;
   extra_capabilities: string;
   service_paths: string;
 };
@@ -145,6 +151,7 @@ function buildInitialState(initialValue?: EnvironmentDetail | null): FormState {
     tags: initialValue?.tags.join(", ") ?? "",
     groupings: initialValue?.groupings.join(", ") ?? "",
     labels: initialValue ? toPrettyJson(initialValue.labels) : emptyJson,
+    kind: initialValue?.kind === "orchestrator" ? "orchestrator" : "aap",
     deployment_type: initialValue?.deployment_type ?? "podman",
     region: typeof infrastructure.region === "string" ? infrastructure.region : "",
     cluster_or_project: typeof infrastructure.cluster_or_project === "string" ? infrastructure.cluster_or_project : "",
@@ -156,10 +163,14 @@ function buildInitialState(initialValue?: EnvironmentDetail | null): FormState {
     controller_url: initialValue?.controller_url ?? "",
     eda_url: initialValue?.eda_url ?? "",
     hub_url: initialValue?.hub_url ?? "",
+    orchestrator_url: initialValue?.orchestrator_url ?? "",
     auth_mode: initialValue?.auth_mode ?? "oauth2",
-    client_id: initialValue?.client_id ?? "",
+    client_id: (initialValue?.kind === "orchestrator" ? initialValue.orchestrator_client_id : initialValue?.client_id) ?? initialValue?.client_id ?? "",
     client_secret: "",
     access_token: "",
+    orchestrator_client_id: initialValue?.orchestrator_client_id ?? "",
+    orchestrator_client_secret: "",
+    orchestrator_access_token: "",
     verify_ssl: initialValue?.verify_ssl ?? true,
     sync_interval_minutes: String(initialValue?.sync_interval_minutes ?? 5),
     management_mode: profile.management_mode,
@@ -182,6 +193,7 @@ function buildInitialState(initialValue?: EnvironmentDetail | null): FormState {
     metrics_enabled: profile.metrics_enabled,
     automation_reports_enabled: profile.automation_reports_enabled,
     ai_assistant_enabled: profile.ai_assistant_enabled,
+    orchestrator_expected: profile.orchestrator_expected,
     extra_capabilities: toPrettyJson(extraCapabilities),
     service_paths: initialValue ? toPrettyJson(initialValue.service_paths) : emptyJson,
   };
@@ -289,15 +301,17 @@ export function EnvironmentForm({
         tags: splitCsv(form.tags),
         groupings: splitCsv(form.groupings),
         labels: parseObjectField(form.labels, "Labels"),
+        kind: form.kind,
         deployment_type: form.deployment_type,
         infrastructure,
-        platform_url: form.platform_url.trim() || null,
-        gateway_url: form.gateway_url.trim(),
-        controller_url: form.controller_url.trim() || null,
-        eda_url: form.eda_url.trim() || null,
-        hub_url: form.hub_url.trim() || null,
+        platform_url: form.kind === "orchestrator" ? form.orchestrator_url.trim() || form.platform_url.trim() || null : form.platform_url.trim() || null,
+        gateway_url: form.kind === "orchestrator" ? null : form.gateway_url.trim() || null,
+        controller_url: form.kind === "orchestrator" ? null : form.controller_url.trim() || null,
+        eda_url: form.kind === "orchestrator" ? null : form.eda_url.trim() || null,
+        hub_url: form.kind === "orchestrator" ? null : form.hub_url.trim() || null,
+        orchestrator_url: form.kind === "orchestrator" ? form.orchestrator_url.trim() || null : null,
         auth_mode: form.auth_mode,
-        client_id: form.client_id.trim() || null,
+        client_id: form.kind === "orchestrator" ? form.client_id.trim() || form.orchestrator_client_id.trim() || null : form.client_id.trim() || null,
         verify_ssl: form.verify_ssl,
         sync_interval_minutes: Number.parseInt(form.sync_interval_minutes, 10) || 5,
         capabilities: buildCapabilities(
@@ -322,6 +336,7 @@ export function EnvironmentForm({
             metrics_enabled: form.metrics_enabled,
             automation_reports_enabled: form.automation_reports_enabled,
             ai_assistant_enabled: form.ai_assistant_enabled,
+            orchestrator_expected: form.kind === "orchestrator",
           },
           parseObjectField(form.extra_capabilities, "Additional capabilities"),
         ),
@@ -334,8 +349,27 @@ export function EnvironmentForm({
       if (form.access_token.trim()) {
         payload.access_token = form.access_token.trim();
       }
+      if (form.kind === "orchestrator") {
+        payload.orchestrator_client_id = form.orchestrator_client_id.trim() || form.client_id.trim() || null;
+        const orchestratorSecret = form.orchestrator_client_secret.trim() || form.client_secret.trim();
+        const orchestratorToken = form.orchestrator_access_token.trim() || form.access_token.trim();
+        if (orchestratorSecret) {
+          payload.orchestrator_client_secret = orchestratorSecret;
+        }
+        if (orchestratorToken) {
+          payload.orchestrator_access_token = orchestratorToken;
+        }
+      } else {
+        payload.orchestrator_client_id = null;
+      }
 
-      if (!payload.name || !payload.slug || !payload.gateway_url) {
+      if (!payload.name || !payload.slug) {
+        throw new Error("Name and slug are required.");
+      }
+      if (form.kind === "orchestrator" && !payload.orchestrator_url) {
+        throw new Error("Name, slug, and Orchestrator URL are required.");
+      }
+      if (form.kind !== "orchestrator" && !payload.gateway_url) {
         throw new Error("Name, slug, and gateway URL are required.");
       }
 
@@ -376,8 +410,27 @@ export function EnvironmentForm({
                       updateField("slug", slugify(value));
                     }
                   }}
-                  placeholder="AAP production east"
+                  placeholder={form.kind === "orchestrator" ? "AO production east" : "AAP production east"}
                 />
+              </FormGroup>
+            </GridItem>
+            <GridItem md={6}>
+              <FormGroup label="Product" fieldId={`${fieldPrefix}-kind`} isRequired>
+                <FormSelect
+                  id={`${fieldPrefix}-kind`}
+                  value={form.kind}
+                  isDisabled={mode === "edit"}
+                  aria-label="Environment product"
+                  onChange={(_, value) => {
+                    updateField("kind", value as EnvironmentKind);
+                    if (mode === "create" && value === "orchestrator") {
+                      updateField("auth_mode", "service_account");
+                    }
+                  }}
+                >
+                  <FormSelectOption value="aap" label="Ansible Automation Platform" />
+                  <FormSelectOption value="orchestrator" label="Automation Orchestrator" />
+                </FormSelect>
               </FormGroup>
             </GridItem>
             <GridItem md={6}>
@@ -433,7 +486,7 @@ export function EnvironmentForm({
 
         <FormSection
           title="Infrastructure footprint"
-          description="Tell the hub where this AAP estate runs so operators can filter and govern Podman, OpenShift, and cloud environments together."
+          description="Tell the hub where this estate runs so operators can filter and govern Podman, OpenShift, and cloud environments together."
         >
           <Grid hasGutter>
             <GridItem md={6}>
@@ -506,10 +559,27 @@ export function EnvironmentForm({
         </StackItem>
 
         <FormSection
-          title="Service endpoints"
-          description="On Ansible Automation Platform 2.5 and later, the platform gateway fronts controller, EDA, and automation hub on the same URL. Set the gateway URL and leave the others blank unless a component is truly on a different host. If AAM and AAP share an OpenShift cluster, prefer the in-cluster Service URL (for example http://aap.aap-operator.svc) — CRC/MicroShift pods cannot resolve *.apps.crc.testing unless the deploy script injects router host aliases."
+          title={form.kind === "orchestrator" ? "Orchestrator endpoint" : "Service endpoints"}
+          description={
+            form.kind === "orchestrator"
+              ? "Automation Orchestrator is a separate product with its own URL and identity. Register the Orchestrator API URL for this estate. If AAM and Orchestrator share an OpenShift cluster, prefer the in-cluster Service URL."
+              : "On Ansible Automation Platform 2.5 and later, the platform gateway fronts controller, EDA, and automation hub on the same URL. Set the gateway URL and leave the others blank unless a component is truly on a different host. If AAM and AAP share an OpenShift cluster, prefer the in-cluster Service URL (for example http://aap.aap-operator.svc) — CRC/MicroShift pods cannot resolve *.apps.crc.testing unless the deploy script injects router host aliases."
+          }
         >
           <Grid hasGutter>
+            {form.kind === "orchestrator" ? (
+              <GridItem md={8}>
+                <FormGroup label="Orchestrator URL" fieldId={`${fieldPrefix}-orchestrator-url`} isRequired>
+                  <TextInput
+                    id={`${fieldPrefix}-orchestrator-url`}
+                    value={form.orchestrator_url}
+                    onChange={(_, value) => updateField("orchestrator_url", value)}
+                    placeholder="https://automation-orchestrator.apps.example.com"
+                  />
+                </FormGroup>
+              </GridItem>
+            ) : (
+              <>
             <GridItem md={6}>
               <FormGroup label="Gateway URL" fieldId={`${fieldPrefix}-gateway-url`} isRequired>
                 <TextInput
@@ -560,6 +630,8 @@ export function EnvironmentForm({
                 />
               </FormGroup>
             </GridItem>
+              </>
+            )}
             <GridItem span={12}>
               <Checkbox
                 id={`${fieldPrefix}-verify-ssl`}
@@ -577,7 +649,11 @@ export function EnvironmentForm({
 
         <FormSection
           title="Collector authentication"
-          description="Choose how the control hub should authenticate when reading platform health and inventory data."
+          description={
+            form.kind === "orchestrator"
+              ? "Provide credentials issued by this Automation Orchestrator instance. AAP gateway tokens are not accepted here."
+              : "Choose how the control hub should authenticate when reading platform health and inventory data."
+          }
         >
           <Grid hasGutter>
             <GridItem md={4}>

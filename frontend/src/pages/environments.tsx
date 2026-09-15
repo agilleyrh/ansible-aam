@@ -12,6 +12,7 @@ import {
   Gallery,
   Grid,
   GridItem,
+  Label,
   Modal,
   ModalBody,
   ModalHeader,
@@ -29,21 +30,27 @@ import { LinkButton } from "../components/link-button";
 import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
 import { StatusPill } from "../components/status-pill";
+import { serviceLabels } from "../monitoring";
 import type { EnvironmentMutationPayload, EnvironmentSummary } from "../types";
-import { deploymentTypeLabel, formatDateTime } from "../utils";
+import { deploymentTypeLabel, environmentKind, environmentKindLabel, formatDateTime } from "../utils";
 
-function getServiceStatuses(summary: Record<string, unknown>): Array<{ service: string; health: string }> {
-  const serviceSummaries = summary.service_summaries;
+function getServiceStatuses(environment: EnvironmentSummary): Array<{ service: string; health: string }> {
+  const serviceSummaries = environment.summary.service_summaries;
   if (!serviceSummaries || typeof serviceSummaries !== "object" || Array.isArray(serviceSummaries)) {
     return [];
   }
+
+  const order = environmentKind(environment) === "orchestrator" ? ["orchestrator"] : ["gateway", "controller", "eda", "hub"];
 
   return Object.entries(serviceSummaries)
     .filter((entry): entry is [string, Record<string, unknown>] => Boolean(entry[1]) && typeof entry[1] === "object" && !Array.isArray(entry[1]))
     .map(([service, value]) => ({
       service,
       health: typeof value.health === "string" ? value.health : "unknown",
-    }));
+    }))
+    .sort((left, right) => {
+      return (order.indexOf(left.service) === -1 ? 50 : order.indexOf(left.service)) - (order.indexOf(right.service) === -1 ? 50 : order.indexOf(right.service));
+    });
 }
 
 export function EnvironmentsPage() {
@@ -55,6 +62,7 @@ export function EnvironmentsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [groupFilter, setGroupFilter] = useState("all");
+  const [kindFilter, setKindFilter] = useState("all");
 
   async function loadEnvironments() {
     const items = await api.environments();
@@ -106,12 +114,18 @@ export function EnvironmentsPage() {
   }
 
   const groups = Array.from(new Set(environments.flatMap((environment) => environment.groupings))).sort();
+  const kindFiltered =
+    kindFilter === "all"
+      ? environments
+      : environments.filter((environment) => environmentKind(environment) === kindFilter);
   const visibleEnvironments =
     groupFilter === "all"
-      ? environments
+      ? kindFiltered
       : groupFilter === "ungrouped"
-        ? environments.filter((environment) => environment.groupings.length === 0)
-        : environments.filter((environment) => environment.groupings.includes(groupFilter));
+        ? kindFiltered.filter((environment) => environment.groupings.length === 0)
+        : kindFiltered.filter((environment) => environment.groupings.includes(groupFilter));
+  const aapCount = environments.filter((environment) => environmentKind(environment) === "aap").length;
+  const orchestratorCount = environments.filter((environment) => environmentKind(environment) === "orchestrator").length;
   const healthyCount = visibleEnvironments.filter((environment) => environment.status === "healthy").length;
   const warningCount = visibleEnvironments.filter((environment) => environment.status === "warning").length;
   const criticalCount = visibleEnvironments.filter((environment) => environment.status === "critical").length;
@@ -122,7 +136,7 @@ export function EnvironmentsPage() {
         <PageHeader
           section="Environments"
           title="Environment registry"
-          description="Register platform gateways, keep the registry clean, and move deeper settings into each environment once the connection is established."
+          description="Register Ansible Automation Platform and Automation Orchestrator as separate estates. Each listing has its own infrastructure, credentials, health, and inventory."
           actions={
             <>
               <LinkButton to="/monitoring" variant="secondary">
@@ -149,7 +163,9 @@ export function EnvironmentsPage() {
 
       <StackItem>
         <Gallery hasGutter minWidths={{ default: "180px", lg: "220px" }}>
-          <StatCard label="Registered" value={visibleEnvironments.length} detail="AAP environments tracked by the hub" />
+          <StatCard label="Registered" value={visibleEnvironments.length} detail="AAP and Orchestrator estates in this view" />
+          <StatCard label="AAP" value={aapCount} detail="Ansible Automation Platform environments" />
+          <StatCard label="Orchestrator" value={orchestratorCount} detail="Automation Orchestrator environments" />
           <StatCard label="Healthy" value={healthyCount} detail="No active sync or service issues" />
           <StatCard label="Warning" value={warningCount} detail="Needs follow-up or attention" />
           <StatCard label="Critical" value={criticalCount} detail="Recent failures or missing services" />
@@ -172,18 +188,34 @@ export function EnvironmentsPage() {
               </StackItem>
               {environments.length > 0 ? (
                 <StackItem>
-                  <FormSelect
-                    id="environment-group-filter"
-                    value={groupFilter}
-                    aria-label="Filter environments by group"
-                    onChange={(_, value) => setGroupFilter(value)}
-                  >
-                    <FormSelectOption value="all" label="All groups" />
-                    <FormSelectOption value="ungrouped" label="Ungrouped" />
-                    {groups.map((group) => (
-                      <FormSelectOption key={group} value={group} label={group} />
-                    ))}
-                  </FormSelect>
+                  <Grid hasGutter>
+                    <GridItem md={6}>
+                      <FormSelect
+                        id="environment-kind-filter"
+                        value={kindFilter}
+                        aria-label="Filter environments by product"
+                        onChange={(_, value) => setKindFilter(value)}
+                      >
+                        <FormSelectOption value="all" label="All products" />
+                        <FormSelectOption value="aap" label="Ansible Automation Platform" />
+                        <FormSelectOption value="orchestrator" label="Automation Orchestrator" />
+                      </FormSelect>
+                    </GridItem>
+                    <GridItem md={6}>
+                      <FormSelect
+                        id="environment-group-filter"
+                        value={groupFilter}
+                        aria-label="Filter environments by group"
+                        onChange={(_, value) => setGroupFilter(value)}
+                      >
+                        <FormSelectOption value="all" label="All groups" />
+                        <FormSelectOption value="ungrouped" label="Ungrouped" />
+                        {groups.map((group) => (
+                          <FormSelectOption key={group} value={group} label={group} />
+                        ))}
+                      </FormSelect>
+                    </GridItem>
+                  </Grid>
                 </StackItem>
               ) : null}
             </Stack>
@@ -198,7 +230,7 @@ export function EnvironmentsPage() {
             ) : environments.length === 0 ? (
               <EmptyState
                 title="No environments registered"
-                description="Register your first Ansible Automation Platform deployment to start collecting health, inventory, and governance data."
+                description="Register your first Ansible Automation Platform or Automation Orchestrator estate to start collecting health, inventory, and governance data."
                 action={
                   <Button type="button" variant="primary" onClick={() => setIsCreateModalOpen(true)}>
                     Register environment
@@ -218,7 +250,7 @@ export function EnvironmentsPage() {
             ) : (
               <Gallery hasGutter minWidths={{ default: "320px", xl: "360px" }}>
                 {visibleEnvironments.map((environment) => {
-                  const serviceStatuses = getServiceStatuses(environment.summary);
+                  const serviceStatuses = getServiceStatuses(environment);
 
                   return (
                     <Card key={environment.id}  isFullHeight>
@@ -230,6 +262,11 @@ export function EnvironmentsPage() {
                                 {environment.name}
                               </Title>
                             </Link>
+                          </StackItem>
+                          <StackItem>
+                            <Label color={environmentKind(environment) === "orchestrator" ? "purple" : "blue"} isCompact>
+                              {environmentKindLabel(environment)}
+                            </Label>
                           </StackItem>
                           <StackItem>
                             <Content component="small" className="aam-muted">
@@ -281,7 +318,7 @@ export function EnvironmentsPage() {
                                 {serviceStatuses.map((item) => (
                                   <div key={`${environment.id}-${item.service}`}>
                                     <Content component="small" className="aam-muted">
-                                      {item.service.toUpperCase()}
+                                      {serviceLabels[item.service] ?? item.service}
                                     </Content>
                                     <div>
                                       <StatusPill status={item.health} />
@@ -346,7 +383,7 @@ export function EnvironmentsPage() {
               <EnvironmentForm
                 mode="create"
                 title="Register environment"
-                description="Create a managed environment record with its gateway, services, and collection credentials."
+                description="Create a managed environment record. Choose Ansible Automation Platform or Automation Orchestrator — each is a separate estate with its own URL and credentials."
                 submitLabel="Register environment"
                 busy={busy}
                 errorMessage={error}
