@@ -23,3 +23,5 @@ def test_import_app():
     assert "/api/v1/policies/{policy_id}/push" in paths
     assert "/api/v1/policies/{policy_id}/remediate" in paths
     assert "/api/v1/config-baseline" in paths
+    assert "/api/v1/events" in paths
+    assert "/api/v1/activity" in paths

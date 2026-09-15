@@ -643,6 +643,7 @@ def _sync_summary(row: SyncExecution) -> str:
     return row.job_type.replace("-", " ")
 
 
+@router.get("/events", response_model=list[ActivityEventResponse])
 @router.get("/activity", response_model=list[ActivityEventResponse])
 def list_activity(
     environment_id: str | None = Query(default=None),
