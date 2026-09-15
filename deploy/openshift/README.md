@@ -39,7 +39,7 @@ UI: `https://aam.apps.crc.testing`
 
 If AAP is already on this cluster (for example `https://aap-aap-operator.apps.crc.testing`), register it in **Environments**. Leave controller, EDA, and hub URLs blank so collection uses the gateway origin (AAP 2.5+).
 
-CRC/MicroShift cluster DNS does **not** resolve `*.apps.crc.testing` from inside pods. `deploy.sh` injects `hostAliases` so AAM can reach the AAP Route through `router-internal-default`. You can also register the in-cluster Service URL instead: `http://aap.aap-operator.svc`.
+CRC/MicroShift cluster DNS does **not** resolve `*.apps.crc.testing` from inside pods. `deploy.sh` injects `hostAliases` so AAM can reach the AAP Route through `router-internal-default`. You can also register the in-cluster Service URL instead: `http://aap.aap-operator.svc`. After rebuilding images tagged `:latest` with `imagePullPolicy: Never`, the script restarts the API and UI deployments so pods actually load the new layers.
 
 Useful flags:
 
@@ -66,6 +66,7 @@ Expect every deployment Ready and health `{"status":"ok","database":"ok","redis"
 3. Leave controller / EDA / hub URLs blank on AAP 2.5+.
 4. Disable SSL verification for the CRC certificate.
 5. Sync. Controller and gateway should go healthy/warning. Automation Hub 503 on this laptop is typically hub pods Pending on PVC `aap-hub-file-storage`.
+6. Optional: if Automation Orchestrator is installed on the same cluster, set its URL (for CRC: `https://automation-orchestrator.apps.crc.testing`) and an Orchestrator service-account client ID/secret. Orchestrator has its own identity; the AAP token is not enough. `deploy.sh` also injects a host alias for that Route.
 
 ## Generic OpenShift
 

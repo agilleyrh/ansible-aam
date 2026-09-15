@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class UserContext(BaseModel):
@@ -14,6 +14,7 @@ class UserContext(BaseModel):
 
 
 DeploymentType = Literal["podman", "openshift", "aws", "gcp", "azure", "other"]
+EnvironmentKind = Literal["aap", "orchestrator"]
 
 
 class EnvironmentBase(BaseModel):
@@ -24,21 +25,35 @@ class EnvironmentBase(BaseModel):
     tags: list[str] = Field(default_factory=list)
     groupings: list[str] = Field(default_factory=list)
     labels: dict[str, Any] = Field(default_factory=dict)
+    kind: EnvironmentKind = "aap"
     deployment_type: DeploymentType = "podman"
     infrastructure: dict[str, Any] = Field(default_factory=dict)
     platform_url: str | None = None
-    gateway_url: str
+    gateway_url: str | None = None
     controller_url: str | None = None
     eda_url: str | None = None
     hub_url: str | None = None
+    orchestrator_url: str | None = None
     auth_mode: Literal["oauth2", "service_account", "header_passthrough"] = "oauth2"
     client_id: str | None = None
     client_secret: str | None = None
     access_token: str | None = None
+    orchestrator_client_id: str | None = None
+    orchestrator_client_secret: str | None = None
+    orchestrator_access_token: str | None = None
     verify_ssl: bool = True
     sync_interval_minutes: int = 5
     capabilities: dict[str, Any] = Field(default_factory=dict)
     service_paths: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_product_urls(self) -> "EnvironmentBase":
+        if self.kind == "orchestrator":
+            if not (self.orchestrator_url or "").strip():
+                raise ValueError("Orchestrator URL is required for Automation Orchestrator environments")
+        elif not (self.gateway_url or "").strip():
+            raise ValueError("Gateway URL is required for AAP environments")
+        return self
 
 
 class EnvironmentCreate(EnvironmentBase):
@@ -53,6 +68,7 @@ class EnvironmentUpdate(BaseModel):
     tags: list[str] | None = None
     groupings: list[str] | None = None
     labels: dict[str, Any] | None = None
+    kind: EnvironmentKind | None = None
     deployment_type: DeploymentType | None = None
     infrastructure: dict[str, Any] | None = None
     platform_url: str | None = None
@@ -60,10 +76,14 @@ class EnvironmentUpdate(BaseModel):
     controller_url: str | None = None
     eda_url: str | None = None
     hub_url: str | None = None
+    orchestrator_url: str | None = None
     auth_mode: Literal["oauth2", "service_account", "header_passthrough"] | None = None
     client_id: str | None = None
     client_secret: str | None = None
     access_token: str | None = None
+    orchestrator_client_id: str | None = None
+    orchestrator_client_secret: str | None = None
+    orchestrator_access_token: str | None = None
     verify_ssl: bool | None = None
     sync_interval_minutes: int | None = None
     capabilities: dict[str, Any] | None = None
@@ -80,6 +100,7 @@ class EnvironmentSummary(BaseModel):
     owner: str
     tags: list[str]
     groupings: list[str]
+    kind: str = "aap"
     deployment_type: str = "podman"
     infrastructure: dict[str, Any] = Field(default_factory=dict)
     status: str
@@ -116,12 +137,14 @@ class ResourceResponse(BaseModel):
 class EnvironmentDetail(EnvironmentSummary):
     labels: dict[str, Any]
     platform_url: str | None
-    gateway_url: str
+    gateway_url: str | None = None
     controller_url: str | None
     eda_url: str | None
     hub_url: str | None
+    orchestrator_url: str | None
     auth_mode: str
     client_id: str | None
+    orchestrator_client_id: str | None
     verify_ssl: bool
     sync_interval_minutes: int
     capabilities: dict[str, Any] = Field(default_factory=dict)
@@ -299,7 +322,7 @@ class SearchResult(BaseModel):
 
 class ActivityEventResponse(BaseModel):
     id: str
-    kind: Literal["sync", "action"]
+    kind: Literal["sync", "action", "execution"]
     environment_id: str
     environment_name: str
     service: str
@@ -354,6 +377,7 @@ class ControllerJob(BaseModel):
     environment_name: str
     deployment_type: str | None = None
     url: str | None = None
+    source: Literal["controller", "orchestrator"] = "controller"
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -363,6 +387,7 @@ class EnvironmentJobStats(BaseModel):
     deployment_type: str
     status: str
     controller_configured: bool
+    orchestrator_configured: bool = False
     running: int = 0
     pending: int = 0
     waiting: int = 0

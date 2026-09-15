@@ -93,7 +93,7 @@ export function AppLayout() {
               </CardHeader>
               <CardBody>
                 <Content component="p">
-                  Register AAP environments across Podman, OpenShift, and cloud footprints. Monitor health, review live jobs, and act from one control hub.
+                  Register AAP and Automation Orchestrator environments across Podman, OpenShift, and cloud footprints. Monitor health, review live jobs and executions, and act from one control hub.
                 </Content>
               </CardBody>
             </Card>

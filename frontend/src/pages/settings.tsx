@@ -81,7 +81,7 @@ export function SettingsPage() {
         <PageHeader
           section="Administration"
           title="Runtime settings and deployment profile"
-          description="Review the running backend defaults, trusted headers, and the core settings that shape how the control hub behaves."
+          description="Review the running backend defaults, trusted headers, and the core settings that shape how the control hub collects AAP and Automation Orchestrator estates."
         />
       </StackItem>
 

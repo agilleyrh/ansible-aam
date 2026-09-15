@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import logging
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.dependencies import get_db
-from app.models import ActionAudit, ManagedEnvironment, PolicyDefinition, PolicyResult, SyncExecution
+from app.models import ActionAudit, ManagedEnvironment, ManagedResource, PolicyDefinition, PolicyResult, SyncExecution
 from app.schemas import (
     ActivityEventResponse,
     DashboardResponse,
@@ -41,7 +43,7 @@ from app.config import get_settings
 from app.health import health_response
 from app.security import encrypt_secret, require_roles, resolve_user
 from app.services.collector import enqueue_sync, record_action
-from app.services.connectors import AAPConnector
+from app.services.connectors import AAPConnector, SERVICE_LABELS
 from app.services.dashboard import build_dashboard
 from app.services.jobs import build_fleet_job_stats, build_fleet_jobs
 from app.services.monitoring import build_monitoring
@@ -52,6 +54,34 @@ from app.services.search import run_search
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _normalize_environment_product_fields(environment: ManagedEnvironment) -> None:
+    if getattr(environment, "kind", "aap") == "orchestrator":
+        environment.gateway_url = None
+        environment.controller_url = None
+        environment.eda_url = None
+        environment.hub_url = None
+        if not environment.platform_url:
+            environment.platform_url = environment.orchestrator_url
+        if not environment.orchestrator_client_id:
+            environment.orchestrator_client_id = environment.client_id
+        if not environment.encrypted_orchestrator_token and environment.encrypted_token:
+            environment.encrypted_orchestrator_token = environment.encrypted_token
+        if not environment.encrypted_orchestrator_client_secret and environment.encrypted_client_secret:
+            environment.encrypted_orchestrator_client_secret = environment.encrypted_client_secret
+        if not environment.client_id:
+            environment.client_id = environment.orchestrator_client_id
+        if not environment.encrypted_token:
+            environment.encrypted_token = environment.encrypted_orchestrator_token
+        if not environment.encrypted_client_secret:
+            environment.encrypted_client_secret = environment.encrypted_orchestrator_client_secret
+        return
+
+    environment.orchestrator_url = None
+    environment.orchestrator_client_id = None
+    environment.encrypted_orchestrator_client_secret = None
+    environment.encrypted_orchestrator_token = None
 
 
 @router.get("/me", response_model=UserContext)
@@ -167,20 +197,26 @@ def create_environment(
         labels=payload.labels,
         deployment_type=payload.deployment_type,
         infrastructure=payload.infrastructure,
+        kind=payload.kind,
         platform_url=payload.platform_url,
         gateway_url=payload.gateway_url,
         controller_url=payload.controller_url,
         eda_url=payload.eda_url,
         hub_url=payload.hub_url,
+        orchestrator_url=payload.orchestrator_url,
         auth_mode=payload.auth_mode,
         client_id=payload.client_id,
         encrypted_client_secret=encrypt_secret(payload.client_secret),
         encrypted_token=encrypt_secret(payload.access_token),
+        orchestrator_client_id=payload.orchestrator_client_id,
+        encrypted_orchestrator_client_secret=encrypt_secret(payload.orchestrator_client_secret),
+        encrypted_orchestrator_token=encrypt_secret(payload.orchestrator_access_token),
         verify_ssl=payload.verify_ssl,
         sync_interval_minutes=payload.sync_interval_minutes,
         capabilities=payload.capabilities,
         service_paths=payload.service_paths,
     )
+    _normalize_environment_product_fields(environment)
     db.add(environment)
     db.commit()
     db.refresh(environment)
@@ -218,6 +254,9 @@ def update_environment(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Environment not found")
 
     update_data = payload.model_dump(exclude_unset=True)
+    requested_kind = update_data.pop("kind", None)
+    if requested_kind not in {None, environment.kind}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Environment product kind cannot be changed")
     new_name = update_data.get("name")
     new_slug = update_data.get("slug")
     if new_name or new_slug:
@@ -240,9 +279,14 @@ def update_environment(
             environment.encrypted_client_secret = encrypt_secret(value)
         elif field == "access_token":
             environment.encrypted_token = encrypt_secret(value)
+        elif field == "orchestrator_client_secret":
+            environment.encrypted_orchestrator_client_secret = encrypt_secret(value)
+        elif field == "orchestrator_access_token":
+            environment.encrypted_orchestrator_token = encrypt_secret(value)
         else:
             setattr(environment, field, value)
 
+    _normalize_environment_product_fields(environment)
     db.commit()
     db.refresh(environment)
     return EnvironmentSummary.model_validate(environment)
@@ -307,6 +351,8 @@ def fleet_topology(
                 kind="environment",
                 status=environment.status,
                 metadata={
+                    "kind": getattr(environment, "kind", "aap"),
+                    "product": "Automation Orchestrator" if getattr(environment, "kind", "aap") == "orchestrator" else "Ansible Automation Platform",
                     "deployment_type": environment.deployment_type,
                     "groupings": environment.groupings,
                     "platform_version": environment.platform_version,
@@ -319,7 +365,7 @@ def fleet_topology(
             nodes.append(
                 TopologyNode(
                     id=service_id,
-                    label=f"{environment.name} {snapshot.service.upper()}",
+                    label=f"{environment.name} {SERVICE_LABELS.get(snapshot.service, snapshot.service.replace('_', ' ').title())}",
                     kind="service",
                     status=snapshot.health,
                     metadata={"service": snapshot.service, "environment": environment.name},
@@ -344,7 +390,10 @@ def environment_topology(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Environment not found")
 
     nodes = [
-        TopologyNode(id=environment.id, label=environment.name, kind="environment", status=environment.status),
+        TopologyNode(id=environment.id, label=environment.name, kind="environment", status=environment.status, metadata={
+            "kind": getattr(environment, "kind", "aap"),
+            "product": "Automation Orchestrator" if getattr(environment, "kind", "aap") == "orchestrator" else "Ansible Automation Platform",
+        }),
     ]
     edges: list[TopologyEdge] = []
     capabilities = environment.capabilities or {}
@@ -354,10 +403,10 @@ def environment_topology(
         nodes.append(
             TopologyNode(
                 id=service_id,
-                label=snapshot.service.upper(),
+                label=SERVICE_LABELS.get(snapshot.service, snapshot.service.replace("_", " ").title()),
                 kind="service",
                 status=snapshot.health,
-                metadata=snapshot.summary,
+                metadata={"service": snapshot.service, **(snapshot.summary or {})},
             )
         )
         edges.append(TopologyEdge(source=environment.id, target=service_id, relationship="contains"))
@@ -643,6 +692,17 @@ def _sync_summary(row: SyncExecution) -> str:
     return row.job_type.replace("-", " ")
 
 
+def _parse_event_time(value: object, fallback: datetime | None = None) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return fallback
+    return fallback
+
+
 @router.get("/events", response_model=list[ActivityEventResponse])
 @router.get("/activity", response_model=list[ActivityEventResponse])
 def list_activity(
@@ -661,13 +721,22 @@ def list_activity(
         .join(ManagedEnvironment, ManagedEnvironment.id == ActionAudit.environment_id)
         .order_by(ActionAudit.created_at.desc())
     )
+    execution_statement = (
+        select(ManagedResource, ManagedEnvironment)
+        .join(ManagedEnvironment, ManagedEnvironment.id == ManagedResource.environment_id)
+        .where(ManagedResource.service == "orchestrator", ManagedResource.resource_type == "execution")
+        .order_by(ManagedResource.last_seen_at.desc())
+    )
 
     if environment_id:
         sync_statement = sync_statement.where(SyncExecution.environment_id == environment_id)
         action_statement = action_statement.where(ActionAudit.environment_id == environment_id)
+        execution_statement = execution_statement.where(ManagedResource.environment_id == environment_id)
 
-    sync_rows = db.execute(sync_statement.limit(limit)).all()
-    action_rows = db.execute(action_statement.limit(limit)).all()
+    kind_limit = max(15, limit // 3)
+    sync_rows = db.execute(sync_statement.limit(kind_limit)).all()
+    action_rows = db.execute(action_statement.limit(kind_limit)).all()
+    execution_rows = db.execute(execution_statement.limit(kind_limit)).all()
 
     items = [
         ActivityEventResponse(
@@ -709,6 +778,26 @@ def list_activity(
             },
         )
         for row, environment in action_rows
+    )
+    items.extend(
+        ActivityEventResponse(
+            id=row.id,
+            kind="execution",
+            environment_id=environment.id,
+            environment_name=environment.name,
+            service="orchestrator",
+            operation="workflow_execution",
+            target=row.name,
+            status=row.status,
+            requested_by="Automation Orchestrator",
+            summary=f"Workflow execution {row.name}",
+            created_at=_parse_event_time((row.metadata_json or {}).get("created_at"), row.last_seen_at or row.created_at)
+            or row.created_at,
+            started_at=_parse_event_time((row.metadata_json or {}).get("created_at"), row.last_seen_at or row.created_at),
+            finished_at=_parse_event_time((row.metadata_json or {}).get("completed_at")),
+            details=row.metadata_json or {},
+        )
+        for row, environment in execution_rows
     )
     items.sort(key=lambda item: item.created_at, reverse=True)
     return items[:limit]

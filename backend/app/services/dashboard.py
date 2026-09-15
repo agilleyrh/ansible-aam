@@ -54,6 +54,7 @@ def build_dashboard(db: Session) -> DashboardResponse:
             "metrics_enabled",
             "automation_reports_enabled",
             "ai_assistant_enabled",
+            "orchestrator_expected",
         ):
             if _truthy(capabilities.get(key)):
                 integration_counter[key] += 1

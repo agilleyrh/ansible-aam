@@ -9,8 +9,8 @@ import { api } from "../api";
 import { EmptyState } from "../components/empty-state";
 import { PageHeader } from "../components/page-header";
 import { StatusPill } from "../components/status-pill";
+import { resourceTypeLabel, serviceLabel } from "../monitoring";
 import type { SearchResult } from "../types";
-import { humanize } from "../utils";
 
 export function SearchPage() {
   const [query, setQuery] = useState("");
@@ -47,7 +47,7 @@ export function SearchPage() {
         <PageHeader
           section="Search"
           title="Search the collected automation inventory"
-          description="Search templates, workflows, projects, credentials, activations, repositories, and collections across all synced AAP environments."
+          description="Search templates, Orchestrator workflows, executions, integrations, projects, credentials, activations, repositories, and collections across every registered AAP and Orchestrator estate."
         />
       </StackItem>
 
@@ -68,7 +68,7 @@ export function SearchPage() {
                   setSearched(false);
                   setError(null);
                 }}
-                placeholder="Search resources by name, type, service, or environment"
+                placeholder="Search by name, type, service, or environment. Try orchestrator or AO."
                 submitSearchButtonLabel="Search inventory"
                 aria-label="Search collected inventory"
                 isDisabled={searching}
@@ -90,7 +90,7 @@ export function SearchPage() {
               </StackItem>
               <StackItem>
                 <Content component="p" className="aam-muted">
-                  Query across all registered environments or narrow the term to a specific service or resource type.
+                  Query across all registered AAP and Automation Orchestrator environments, including workflows, executions, projects, and integrations.
                 </Content>
               </StackItem>
             </Stack>
@@ -134,13 +134,13 @@ export function SearchPage() {
                           <Content component="small" className="aam-muted">
                             Service
                           </Content>
-                          <div>{result.service}</div>
+                          <div>{serviceLabel(result.service)}</div>
                         </GridItem>
                         <GridItem md={2}>
                           <Content component="small" className="aam-muted">
                             Type
                           </Content>
-                          <div>{humanize(result.resource_type)}</div>
+                          <div>{resourceTypeLabel(result.resource_type)}</div>
                         </GridItem>
                         <GridItem md={2}>
                           <Content component="small" className="aam-muted">

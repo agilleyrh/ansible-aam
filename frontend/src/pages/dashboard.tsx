@@ -23,8 +23,9 @@ import { LinkButton } from "../components/link-button";
 import { MetricBarChart } from "../components/metric-bar-chart";
 import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
-import type { ActivityEvent, DashboardResponse } from "../types";
-import { humanize } from "../utils";
+import { orderedServiceEntries, resourceTypeLabel, serviceLabel } from "../monitoring";
+import type { ActivityEvent, DashboardResponse, EnvironmentSummary } from "../types";
+import { environmentKind, environmentKindLabel, humanize } from "../utils";
 
 function getProgressVariant(name: string): "danger" | "success" | "warning" | undefined {
   const normalized = name.toLowerCase();
@@ -49,6 +50,37 @@ function getCoverageVariant(resourceType: string): "danger" | "warning" | undefi
     return "warning";
   }
   return undefined;
+}
+
+function sumServiceMetric(environments: EnvironmentSummary[], service: string, key: string): number {
+  return environments.reduce((total, environment) => {
+    const summaries = environment.summary.service_summaries;
+    if (!summaries || typeof summaries !== "object" || Array.isArray(summaries)) {
+      return total;
+    }
+    const snapshot = (summaries as Record<string, Record<string, unknown>>)[service];
+    const value = snapshot?.[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return total + value;
+    }
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number.parseInt(value, 10);
+      return Number.isFinite(parsed) ? total + parsed : total;
+    }
+    return total;
+  }, 0);
+}
+
+function coverageEntries(breakdown: Record<string, number>): Array<[string, number]> {
+  const preferred = new Set(["workflow", "execution", "integration"]);
+  const ranked = Object.entries(breakdown).sort((left, right) => right[1] - left[1]);
+  const top = ranked.slice(0, 8);
+  for (const [resourceType, count] of ranked) {
+    if (preferred.has(resourceType) && !top.some(([item]) => item === resourceType)) {
+      top.push([resourceType, count]);
+    }
+  }
+  return top;
 }
 
 export function DashboardPage() {
@@ -110,26 +142,33 @@ export function DashboardPage() {
   }
 
   const hasEnvironments = data.environment_count > 0;
-  const topResources = Object.entries(data.resource_breakdown)
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 8);
+  const aapEnvironments = data.environment_summaries.filter((environment) => environmentKind(environment) === "aap");
+  const orchestratorEnvironments = data.environment_summaries.filter((environment) => environmentKind(environment) === "orchestrator");
+  const topResources = coverageEntries(data.resource_breakdown);
+  const orchestratorWorkflows = sumServiceMetric(orchestratorEnvironments, "orchestrator", "workflow_count");
+  const orchestratorExecutions = sumServiceMetric(orchestratorEnvironments, "orchestrator", "execution_count");
+  const orchestratorIntegrations = sumServiceMetric(orchestratorEnvironments, "orchestrator", "integration_count");
+  const aapServices = Object.fromEntries(Object.entries(data.services).filter(([service]) => service !== "orchestrator"));
+  const orchestratorServices = Object.fromEntries(Object.entries(data.services).filter(([service]) => service === "orchestrator"));
   const topIntegrations = Object.entries(data.integration_breakdown)
     .sort((left, right) => right[1] - left[1])
     .slice(0, 6);
-  const healthScores = data.environment_summaries.map((environment) => {
-    const score =
-      typeof environment.summary.health_score === "number"
-        ? environment.summary.health_score
-        : Number.parseInt(String(environment.summary.health_score ?? 0), 10) || 0;
+  function healthScoreItems(environments: EnvironmentSummary[]) {
+    return environments.map((environment) => {
+      const score =
+        typeof environment.summary.health_score === "number"
+          ? environment.summary.health_score
+          : Number.parseInt(String(environment.summary.health_score ?? 0), 10) || 0;
 
-    return {
-      label: environment.name,
-      value: score,
-      total: 100,
-      valueText: `${score} of 100`,
-      variant: score >= 85 ? ("success" as const) : score >= 60 ? ("warning" as const) : ("danger" as const),
-    };
-  });
+      return {
+        label: environment.name,
+        value: score,
+        total: 100,
+        valueText: `${score} of 100`,
+        variant: score >= 85 ? ("success" as const) : score >= 60 ? ("warning" as const) : ("danger" as const),
+      };
+    });
+  }
 
   return (
     <Stack hasGutter>
@@ -137,7 +176,7 @@ export function DashboardPage() {
         <PageHeader
           section="Overview"
           title="Multi-environment automation operations"
-          description="Use the overview for high-level fleet status, then move into monitoring, environment settings, and activity for operational work."
+          description="Use the overview for high-level fleet status across Ansible Automation Platform and Automation Orchestrator estates, then move into monitoring, environment settings, and activity for operational work."
           actions={
             <>
               <LinkButton to="/monitoring" variant="secondary">
@@ -159,7 +198,9 @@ export function DashboardPage() {
 
       <StackItem>
         <Gallery hasGutter minWidths={{ default: "180px", lg: "220px" }}>
-          <StatCard label="Managed environments" value={data.environment_count} detail="Registered AAP estates" />
+          <StatCard label="Managed environments" value={data.environment_count} detail="Registered AAP and Orchestrator estates" />
+          <StatCard label="AAP environments" value={aapEnvironments.length} detail="Ansible Automation Platform estates" />
+          <StatCard label="Orchestrator environments" value={orchestratorEnvironments.length} detail="Automation Orchestrator estates" />
           <StatCard label="Healthy" value={data.healthy_count} detail="No current collection or policy issues" />
           <StatCard label="Warning" value={data.warning_count} detail="Needs review or follow-up" />
           <StatCard label="Critical" value={data.critical_count} detail="Sync or service failures detected" />
@@ -171,8 +212,8 @@ export function DashboardPage() {
           <Card >
             <CardBody>
               <EmptyState
-                title="No AAP environments registered"
-                description="Register your first controller, gateway, EDA, or automation hub endpoint to populate dashboard health, monitoring posture, topology, and governance data."
+                title="No environments registered"
+                description="Register Ansible Automation Platform and Automation Orchestrator as separate environments to populate dashboard health, monitoring posture, topology, and governance data."
                 action={
                   <LinkButton to="/environments" variant="primary">
                     Register first environment
@@ -234,29 +275,54 @@ export function DashboardPage() {
                       </StackItem>
                       <StackItem>
                         <Content component="p" className="aam-muted">
-                          Component readiness by service type. Open the monitoring view for the full cross-environment breakdown.
+                          Component readiness by service type. Ansible Automation Platform and Automation Orchestrator are listed separately because they are different products.
                         </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
                   <CardBody>
                     <Stack hasGutter>
-                      {Object.entries(data.services).map(([service, counts]) => (
+                      {orderedServiceEntries(aapServices).map(([service, counts]) => (
                         <StackItem key={service}>
                           <Title headingLevel="h3" size="md">
-                            {service.toUpperCase()}
+                            {serviceLabel(service)}
                           </Title>
                           <MetricBarChart
                             items={Object.entries(counts).map(([status, value]) => ({
                               label: humanize(status),
                               value,
                               total: Object.values(counts).reduce((total, count) => total + count, 0) || 1,
-                              valueText: `${value} environments`,
+                              valueText: `${value} AAP environments`,
                               variant: getProgressVariant(status),
                             }))}
                           />
                         </StackItem>
                       ))}
+                      {orchestratorEnvironments.length > 0 || orderedServiceEntries(orchestratorServices).length > 0 ? (
+                        <>
+                          <StackItem>
+                            <Title headingLevel="h3" size="md">
+                              {environmentKindLabel("orchestrator")}
+                            </Title>
+                            <Content component="p" className="aam-muted">
+                              {orchestratorEnvironments.length} Orchestrator estate{orchestratorEnvironments.length === 1 ? "" : "s"} · {orchestratorWorkflows} workflows · {orchestratorExecutions} executions · {orchestratorIntegrations} integrations
+                            </Content>
+                          </StackItem>
+                          {orderedServiceEntries(orchestratorServices).map(([service, counts]) => (
+                            <StackItem key={service}>
+                              <MetricBarChart
+                                items={Object.entries(counts).map(([status, value]) => ({
+                                  label: humanize(status),
+                                  value,
+                                  total: Object.values(counts).reduce((total, count) => total + count, 0) || 1,
+                                  valueText: `${value} Orchestrator environments`,
+                                  variant: getProgressVariant(status),
+                                }))}
+                              />
+                            </StackItem>
+                          ))}
+                        </>
+                      ) : null}
                     </Stack>
                   </CardBody>
                 </Card>
@@ -272,18 +338,39 @@ export function DashboardPage() {
                     <Stack>
                       <StackItem>
                         <Title headingLevel="h2" size="lg">
-                          Environment health scores
+                          AAP health scores
                         </Title>
                       </StackItem>
                       <StackItem>
                         <Content component="p" className="aam-muted">
-                          Use this as a quick view of which environments need deeper investigation in the monitoring page.
+                          Ansible Automation Platform estates. Open monitoring for gateway, controller, EDA, and Hub signals.
                         </Content>
                       </StackItem>
                     </Stack>
                   </CardHeader>
                   <CardBody>
-                    <MetricBarChart items={healthScores} emptyText="No environment health scores available." />
+                    <MetricBarChart items={healthScoreItems(aapEnvironments)} emptyText="No AAP environments registered." />
+                  </CardBody>
+                </Card>
+              </GridItem>
+              <GridItem lg={6}>
+                <Card  isFullHeight>
+                  <CardHeader>
+                    <Stack>
+                      <StackItem>
+                        <Title headingLevel="h2" size="lg">
+                          Orchestrator health scores
+                        </Title>
+                      </StackItem>
+                      <StackItem>
+                        <Content component="p" className="aam-muted">
+                          Automation Orchestrator estates. These are separate products from AAP, with their own health, workflows, and integrations.
+                        </Content>
+                      </StackItem>
+                    </Stack>
+                  </CardHeader>
+                  <CardBody>
+                    <MetricBarChart items={healthScoreItems(orchestratorEnvironments)} emptyText="No Automation Orchestrator environments registered." />
                   </CardBody>
                 </Card>
               </GridItem>
@@ -346,12 +433,12 @@ export function DashboardPage() {
                     {topResources.length === 0 ? (
                       <EmptyState
                         title="No inventory collected"
-                        description="Queue a sync to populate templates, projects, activations, repositories, and other tracked resources."
+                        description="Queue a sync to populate templates, Orchestrator workflows, activations, repositories, and other tracked resources."
                       />
                     ) : (
                       <MetricBarChart
                         items={topResources.map(([resourceType, count]) => ({
-                          label: humanize(resourceType),
+                          label: resourceTypeLabel(resourceType),
                           value: count,
                           valueText: `${count} discovered resources`,
                           variant: getCoverageVariant(resourceType),
@@ -372,7 +459,7 @@ export function DashboardPage() {
                       </StackItem>
                       <StackItem>
                         <Content component="p" className="aam-muted">
-                          Syncs and remote actions aligned to an AAP-style activity stream.
+                          Syncs, remote actions, and Automation Orchestrator workflow executions.
                         </Content>
                       </StackItem>
                     </Stack>

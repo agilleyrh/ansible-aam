@@ -34,11 +34,14 @@ import {
   getSnapshot,
   collectEnvironmentFindings,
   collectMonitoringFindings,
-  monitoredServices,
-  monitoringPointGroups,
+  aapMonitoredServices,
+  monitoredServicesFor,
+  monitoringPointGroupsFor,
+  orchestratorMonitoredServices,
+  serviceLabel,
 } from "../monitoring";
 import type { MonitoringEnvironment, MonitoringResponse } from "../types";
-import { formatDateTime } from "../utils";
+import { environmentKind, environmentKindLabel, formatDateTime } from "../utils";
 
 type HealthBreakdown = {
   service: string;
@@ -61,8 +64,8 @@ function sumNumericMetric(environments: MonitoringEnvironment[], service: string
   }, 0);
 }
 
-function buildHealthBreakdown(environments: MonitoringEnvironment[]): HealthBreakdown[] {
-  return monitoredServices.map((service) => {
+function buildHealthBreakdown(environments: MonitoringEnvironment[], services: readonly string[]): HealthBreakdown[] {
+  return services.map((service) => {
     const counts = { healthy: 0, warning: 0, critical: 0, not_configured: 0, unknown: 0 };
 
     environments.forEach((environment) => {
@@ -135,46 +138,57 @@ export function MonitoringPage() {
   }
 
   const environments = data.environments;
+  const aapEnvironments = environments.filter((environment) => environmentKind(environment) === "aap");
+  const orchestratorEnvironments = environments.filter((environment) => environmentKind(environment) === "orchestrator");
   const findings = collectMonitoringFindings(environments);
-  const failedJobCount = sumNumericMetric(environments, "controller", "failed_jobs_recent");
-  const failedProjectCount = sumNumericMetric(environments, "controller", "failed_projects_recent");
-  const disabledActivationCount = sumNumericMetric(environments, "eda", "disabled_activations");
-  const serviceBreakdown = buildHealthBreakdown(environments);
-  const controllerCount = environments.filter((environment) => getSnapshotHealth(environment.snapshots, "controller") !== "not_configured").length;
-  const edaCount = environments.filter((environment) => getSnapshotHealth(environment.snapshots, "eda") !== "not_configured").length;
-  const hubCount = environments.filter((environment) => getSnapshotHealth(environment.snapshots, "hub") !== "not_configured").length;
-  const activationCount = sumNumericMetric(environments, "eda", "activation_count");
-  const collectionCount = sumNumericMetric(environments, "hub", "collection_count");
+  const failedJobCount = sumNumericMetric(aapEnvironments, "controller", "failed_jobs_recent");
+  const failedProjectCount = sumNumericMetric(aapEnvironments, "controller", "failed_projects_recent");
+  const disabledActivationCount = sumNumericMetric(aapEnvironments, "eda", "disabled_activations");
+  const aapBreakdown = buildHealthBreakdown(aapEnvironments, aapMonitoredServices);
+  const orchestratorBreakdown = buildHealthBreakdown(orchestratorEnvironments, orchestratorMonitoredServices);
+  const controllerCount = aapEnvironments.filter((environment) => getSnapshotHealth(environment.snapshots, "controller") !== "not_configured").length;
+  const edaCount = aapEnvironments.filter((environment) => getSnapshotHealth(environment.snapshots, "eda") !== "not_configured").length;
+  const hubCount = aapEnvironments.filter((environment) => getSnapshotHealth(environment.snapshots, "hub") !== "not_configured").length;
+  const orchestratorCount = orchestratorEnvironments.length;
+  const activationCount = sumNumericMetric(aapEnvironments, "eda", "activation_count");
+  const collectionCount = sumNumericMetric(aapEnvironments, "hub", "collection_count");
   const templateCount =
-    sumNumericMetric(environments, "controller", "job_template_count") +
-    sumNumericMetric(environments, "controller", "workflow_job_template_count");
+    sumNumericMetric(aapEnvironments, "controller", "job_template_count") +
+    sumNumericMetric(aapEnvironments, "controller", "workflow_job_template_count");
   const configurationCoverage = [
     {
       label: "Controller monitoring",
       value: controllerCount,
-      total: environments.length,
-      valueText: `${controllerCount} of ${environments.length} environments`,
+      total: aapEnvironments.length || 1,
+      valueText: `${controllerCount} of ${aapEnvironments.length} AAP environments`,
       variant: "success" as const,
     },
     {
       label: "EDA monitoring",
       value: edaCount,
-      total: environments.length,
-      valueText: `${edaCount} of ${environments.length} environments`,
+      total: aapEnvironments.length || 1,
+      valueText: `${edaCount} of ${aapEnvironments.length} AAP environments`,
       variant: "success" as const,
     },
     {
       label: "Automation Hub monitoring",
       value: hubCount,
-      total: environments.length,
-      valueText: `${hubCount} of ${environments.length} environments`,
+      total: aapEnvironments.length || 1,
+      valueText: `${hubCount} of ${aapEnvironments.length} AAP environments`,
+      variant: "success" as const,
+    },
+    {
+      label: "Orchestrator estates",
+      value: orchestratorCount,
+      total: environments.length || 1,
+      valueText: `${orchestratorCount} of ${environments.length} environments`,
       variant: "success" as const,
     },
     {
       label: "Gateway-only access declared",
-      value: environments.filter((environment) => parseCapabilityProfile(environment.capabilities).profile.gateway_enforced).length,
-      total: environments.length,
-      valueText: "Environments expecting gateway-only access",
+      value: aapEnvironments.filter((environment) => parseCapabilityProfile(environment.capabilities).profile.gateway_enforced).length,
+      total: aapEnvironments.length || 1,
+      valueText: "AAP environments expecting gateway-only access",
     },
     {
       label: "Metrics or reports declared",
@@ -182,22 +196,22 @@ export function MonitoringPage() {
         const profile = parseCapabilityProfile(environment.capabilities).profile;
         return profile.metrics_enabled || profile.automation_reports_enabled;
       }).length,
-      total: environments.length,
+      total: environments.length || 1,
       valueText: "Environments with observability declarations",
       variant: "success" as const,
     },
     {
       label: "Content signing declared",
-      value: environments.filter((environment) => parseCapabilityProfile(environment.capabilities).profile.content_signing_enabled).length,
-      total: environments.length,
-      valueText: "Environments with content signing declarations",
+      value: aapEnvironments.filter((environment) => parseCapabilityProfile(environment.capabilities).profile.content_signing_enabled).length,
+      total: aapEnvironments.length || 1,
+      valueText: "AAP environments with content signing declarations",
     },
   ];
   const operationalSignals = [
     {
       label: "Controller jobs",
-      value: sumNumericMetric(environments, "controller", "job_count"),
-      valueText: "Jobs discovered across controller integrations",
+      value: sumNumericMetric(aapEnvironments, "controller", "job_count"),
+      valueText: "Jobs discovered across AAP controller estates",
       variant: "success" as const,
     },
     {
@@ -221,7 +235,7 @@ export function MonitoringPage() {
     {
       label: "EDA activations",
       value: activationCount,
-      valueText: "Rulebook activations discovered across environments",
+      valueText: "Rulebook activations discovered across AAP environments",
       variant: "success" as const,
     },
     {
@@ -236,6 +250,24 @@ export function MonitoringPage() {
       valueText: "Collections returned by automation hub APIs",
       variant: "success" as const,
     },
+    {
+      label: "Orchestrator workflows",
+      value: sumNumericMetric(orchestratorEnvironments, "orchestrator", "workflow_count"),
+      valueText: "Workflows discovered in Orchestrator estates",
+      variant: "success" as const,
+    },
+    {
+      label: "Orchestrator integrations",
+      value: sumNumericMetric(orchestratorEnvironments, "orchestrator", "integration_count"),
+      valueText: "Integrations configured in Orchestrator estates",
+      variant: "success" as const,
+    },
+    {
+      label: "Failed orchestrator executions",
+      value: sumNumericMetric(orchestratorEnvironments, "orchestrator", "failed_executions_recent"),
+      valueText: "Recent failed or errored Orchestrator executions",
+      variant: sumNumericMetric(orchestratorEnvironments, "orchestrator", "failed_executions_recent") > 0 ? ("danger" as const) : ("success" as const),
+    },
   ];
 
   const envSpan = environments.length === 1 ? 12 : 6;
@@ -246,7 +278,7 @@ export function MonitoringPage() {
         <PageHeader
           section="Monitoring"
           title="Fleet monitoring and service posture"
-          description="Review gateway, controller, EDA, and Hub signals from the latest sync. Warnings mean a service is reachable but incomplete or unhealthy; critical means collection failed."
+          description="Review Ansible Automation Platform and Automation Orchestrator as separate estates. Warnings mean a service is reachable but incomplete or unhealthy; critical means collection failed."
           actions={
             <>
               <LinkButton to="/activity" variant="secondary">
@@ -268,17 +300,27 @@ export function MonitoringPage() {
 
       <StackItem>
         <Grid hasGutter>
-          <GridItem sm={6} xl={3}>
-            <StatCard label="Environments" value={data.environment_count} detail="Registered AAP estates" />
+          <GridItem sm={6} xl={4}>
+            <StatCard label="AAP environments" value={aapEnvironments.length} detail="Ansible Automation Platform estates" />
           </GridItem>
-          <GridItem sm={6} xl={3}>
-            <StatCard label="Controllers monitored" value={controllerCount} detail="Controller collection enabled" />
+          <GridItem sm={6} xl={4}>
+            <StatCard label="Orchestrator environments" value={orchestratorCount} detail="Automation Orchestrator estates" />
           </GridItem>
-          <GridItem sm={6} xl={3}>
-            <StatCard label="EDA activations" value={activationCount} detail="Activations across the fleet" />
+          <GridItem sm={6} xl={4}>
+            <StatCard label="Controllers monitored" value={controllerCount} detail="Controller collection on AAP estates" />
           </GridItem>
-          <GridItem sm={6} xl={3}>
+          <GridItem sm={6} xl={4}>
+            <StatCard label="EDA activations" value={activationCount} detail="Activations across AAP estates" />
+          </GridItem>
+          <GridItem sm={6} xl={4}>
             <StatCard label="Hub collections" value={collectionCount} detail="Collections from automation hub" />
+          </GridItem>
+          <GridItem sm={6} xl={4}>
+            <StatCard
+              label="Orchestrator workflows"
+              value={sumNumericMetric(orchestratorEnvironments, "orchestrator", "workflow_count")}
+              detail="Workflows from Orchestrator estates"
+            />
           </GridItem>
         </Grid>
       </StackItem>
@@ -344,25 +386,64 @@ export function MonitoringPage() {
                       </CardHeader>
                       <CardBody>
                         <div className="aam-health-table">
-                          {serviceBreakdown.map((service) => (
-                            <div key={service.service} className="aam-health-table__row">
-                              <strong>{service.service.toUpperCase()}</strong>
-                              <div className="aam-health-table__counts">
-                                <Label color="green" isCompact>
-                                  {service.counts.healthy} healthy
-                                </Label>
-                                <Label color="orange" isCompact>
-                                  {service.counts.warning} warning
-                                </Label>
-                                <Label color="red" isCompact>
-                                  {service.counts.critical} critical
-                                </Label>
-                                <Label color="grey" isCompact>
-                                  {service.counts.not_configured} skipped
-                                </Label>
+                          {aapEnvironments.length > 0 ? (
+                            <>
+                              <div className="aam-health-table__row">
+                                <strong>{environmentKindLabel("aap")}</strong>
+                                <div className="aam-health-table__counts">
+                                  <Label isCompact>{aapEnvironments.length} estates</Label>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                              {aapBreakdown.map((service) => (
+                                <div key={service.service} className="aam-health-table__row">
+                                  <strong>{serviceLabel(service.service)}</strong>
+                                  <div className="aam-health-table__counts">
+                                    <Label color="green" isCompact>
+                                      {service.counts.healthy} healthy
+                                    </Label>
+                                    <Label color="orange" isCompact>
+                                      {service.counts.warning} warning
+                                    </Label>
+                                    <Label color="red" isCompact>
+                                      {service.counts.critical} critical
+                                    </Label>
+                                    <Label color="grey" isCompact>
+                                      {service.counts.not_configured} skipped
+                                    </Label>
+                                  </div>
+                                </div>
+                              ))}
+                            </>
+                          ) : null}
+                          {orchestratorEnvironments.length > 0 ? (
+                            <>
+                              <div className="aam-health-table__row">
+                                <strong>{environmentKindLabel("orchestrator")}</strong>
+                                <div className="aam-health-table__counts">
+                                  <Label color="purple" isCompact>{orchestratorEnvironments.length} estates</Label>
+                                </div>
+                              </div>
+                              {orchestratorBreakdown.map((service) => (
+                                <div key={service.service} className="aam-health-table__row">
+                                  <strong>{serviceLabel(service.service)}</strong>
+                                  <div className="aam-health-table__counts">
+                                    <Label color="green" isCompact>
+                                      {service.counts.healthy} healthy
+                                    </Label>
+                                    <Label color="orange" isCompact>
+                                      {service.counts.warning} warning
+                                    </Label>
+                                    <Label color="red" isCompact>
+                                      {service.counts.critical} critical
+                                    </Label>
+                                    <Label color="grey" isCompact>
+                                      {service.counts.not_configured} skipped
+                                    </Label>
+                                  </div>
+                                </div>
+                              ))}
+                            </>
+                          ) : null}
                         </div>
                       </CardBody>
                     </Card>
@@ -378,7 +459,7 @@ export function MonitoringPage() {
                           </StackItem>
                           <StackItem>
                             <Content component="p" className="aam-muted">
-                              Average of gateway, controller, EDA, and Hub. Healthy scores 100, warning 70, critical 35. Below 85 shows as warning.
+                              Average of collected services for each estate. AAP scores gateway, controller, EDA, and Hub. Orchestrator scores its own API. Healthy scores 100, warning 70, critical 35. Below 85 shows as warning.
                             </Content>
                           </StackItem>
                         </Stack>
@@ -454,6 +535,11 @@ export function MonitoringPage() {
                               </Title>
                             </StackItem>
                             <StackItem>
+                              <Label color={environmentKind(environment) === "orchestrator" ? "purple" : "blue"} isCompact>
+                                {environmentKindLabel(environment)}
+                              </Label>
+                            </StackItem>
+                            <StackItem>
                               <Content component="small" className="aam-muted">
                                 Last sync {formatDateTime(environment.last_synced_at)}
                               </Content>
@@ -465,9 +551,9 @@ export function MonitoringPage() {
                             <StackItem>
                               <div className="aam-link-cluster">
                                 <StatusPill status={environment.status} />
-                                {monitoredServices.map((service) => (
+                                {monitoredServicesFor(environment).map((service) => (
                                   <Label key={`${environment.id}-${service}`} isCompact>
-                                    {service}: {getSnapshotHealth(environment.snapshots, service)}
+                                    {serviceLabel(service)}: {getSnapshotHealth(environment.snapshots, service)}
                                   </Label>
                                 ))}
                               </div>
@@ -490,7 +576,7 @@ export function MonitoringPage() {
                                       ))}
                                     </div>
                                   </StackItem>
-                                  {monitoringPointGroups.map((group) => (
+                                  {monitoringPointGroupsFor(environment).map((group) => (
                                     <StackItem key={`${environment.id}-${group.id}`}>
                                       <Content component="small" className="aam-muted">
                                         {group.title}

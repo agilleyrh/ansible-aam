@@ -28,8 +28,9 @@ import { EmptyState } from "../components/empty-state";
 import { LinkButton } from "../components/link-button";
 import { PageHeader } from "../components/page-header";
 import { StatusPill } from "../components/status-pill";
+import { resourceTypeLabel, serviceLabel } from "../monitoring";
 import type { EnvironmentSummary, TopologyEdge, TopologyNode, TopologyResponse } from "../types";
-import { stringifyValue } from "../utils";
+import { environmentKind, stringifyValue } from "../utils";
 
 type TreeNode = TopologyNode & { children: TreeNode[] };
 
@@ -63,7 +64,9 @@ function TopologyNodeCard({ node }: { node: TreeNode }) {
                 {node.label}
               </Title>
               <Content component="small" className="aam-muted">
-                {node.kind}
+                {node.kind === "service" && typeof node.metadata.service === "string"
+                  ? serviceLabel(node.metadata.service)
+                  : resourceTypeLabel(node.kind)}
               </Content>
             </GridItem>
             <GridItem md={4} style={{ textAlign: "right" }}>
@@ -206,13 +209,17 @@ export function TopologyPage() {
         <PageHeader
           section="Topology"
           title="Service and resource relationships"
-          description="Follow how each environment expands into services, collected resources, and declared platform integrations such as operators, Terraform, receptor, Backstage, and MCP."
+          description="Follow how each Ansible Automation Platform or Automation Orchestrator estate expands into its own services, collected resources, and declared integrations."
           actions={
             environments.length > 0 ? (
               <FormSelect value={selected} onChange={(_, value) => setSelected(value)} aria-label="Select environment topology">
                 <FormSelectOption value="fleet" label="Entire fleet" />
                 {environments.map((environment) => (
-                  <FormSelectOption key={environment.id} value={environment.id} label={environment.name} />
+                  <FormSelectOption
+                    key={environment.id}
+                    value={environment.id}
+                    label={`${environment.name} (${environmentKind(environment) === "orchestrator" ? "Orchestrator" : "AAP"})`}
+                  />
                 ))}
               </FormSelect>
             ) : undefined
@@ -226,7 +233,7 @@ export function TopologyPage() {
             <CardBody>
               <EmptyState
                 title="No topology available yet"
-                description="Register and sync at least one AAP environment to populate service and resource relationships."
+                description="Register and sync at least one AAP or Automation Orchestrator environment to populate service and resource relationships."
                 action={
                   <LinkButton to="/environments" variant="primary">
                     Register first environment
@@ -264,7 +271,7 @@ export function TopologyPage() {
                 </StackItem>
                 <StackItem>
                   <Content component="p" className="aam-muted">
-                    Nodes show hub-to-environment relationships or the services collected for one AAP estate.
+                    Nodes show hub-to-environment relationships. AAP estates expand into gateway, controller, EDA, and Hub. Orchestrator estates are listed separately with their own services.
                   </Content>
                 </StackItem>
               </Stack>

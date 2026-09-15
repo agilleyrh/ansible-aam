@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -14,52 +15,121 @@ from app.schemas import (
     FleetJobStatsResponse,
     FleetJobsResponse,
 )
-from app.services.connectors import AAPConnector
+from app.services.connectors import AAPConnector, is_orchestrator_environment, normalize_orchestrator_job_status
 
 logger = logging.getLogger(__name__)
 
 ACTIVE_JOB_STATUSES = ("running", "pending", "waiting")
 
 
+def _controller_configured(environment: ManagedEnvironment) -> bool:
+    return not is_orchestrator_environment(environment) and bool(environment.controller_url or environment.gateway_url)
+
+
+def _orchestrator_configured(environment: ManagedEnvironment) -> bool:
+    return is_orchestrator_environment(environment) and bool(getattr(environment, "orchestrator_url", None))
+
+
+def _as_timestamp(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _elapsed_seconds(started: str | None, finished: str | None, elapsed: Any) -> float | None:
+    if isinstance(elapsed, (int, float)):
+        return float(elapsed)
+    if not started or not finished:
+        return None
+    try:
+        start = datetime.fromisoformat(started.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(finished.replace("Z", "+00:00"))
+        return max((end - start).total_seconds(), 0.0)
+    except ValueError:
+        return None
+
+
+def _orchestrator_job_url(environment: ManagedEnvironment, item: dict[str, Any]) -> str | None:
+    url = item.get("url")
+    if isinstance(url, str) and url.startswith(("http://", "https://")):
+        return url
+    base = getattr(environment, "orchestrator_url", None)
+    exec_id = item.get("id")
+    if base and exec_id:
+        return f"{base.rstrip('/')}/executions/{exec_id}"
+    return base
+
+
+def _add_counts(base: dict[str, int], extra: dict[str, int]) -> dict[str, int]:
+    merged = dict(base)
+    for key, value in extra.items():
+        merged[key] = merged.get(key, 0) + int(value or 0)
+    return merged
+
+
 async def _stats_for_environment(environment: ManagedEnvironment) -> EnvironmentJobStats:
+    controller_configured = _controller_configured(environment)
+    orchestrator_configured = _orchestrator_configured(environment)
     base = EnvironmentJobStats(
         environment_id=environment.id,
         environment_name=environment.name,
         deployment_type=environment.deployment_type or "podman",
         status=environment.status,
-        controller_configured=bool(environment.controller_url or environment.gateway_url),
+        controller_configured=controller_configured,
+        orchestrator_configured=orchestrator_configured,
     )
-    if not environment.controller_url and not environment.gateway_url:
+    if not controller_configured and not orchestrator_configured:
         return base
 
-    try:
-        connector = AAPConnector(environment)
-        counts = await connector.get_job_status_counts()
-        return EnvironmentJobStats(
-            environment_id=environment.id,
-            environment_name=environment.name,
-            deployment_type=environment.deployment_type or "podman",
-            status=environment.status,
-            controller_configured=True,
-            running=counts.get("running", 0),
-            pending=counts.get("pending", 0),
-            waiting=counts.get("waiting", 0),
-            failed=counts.get("failed", 0),
-            successful=counts.get("successful", 0),
-            canceled=counts.get("canceled", 0),
-            error=counts.get("error", 0),
-            total=sum(counts.values()),
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Job stats failed for environment %s: %s", environment.id, exc)
-        base.error_message = str(exc)
+    counts: dict[str, int] = {}
+    errors: list[str] = []
+    connector = AAPConnector(environment)
+
+    if controller_configured:
+        try:
+            counts = _add_counts(counts, await connector.get_job_status_counts())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Job stats failed for environment %s: %s", environment.id, exc)
+            errors.append(str(exc))
+
+    if orchestrator_configured:
+        try:
+            counts = _add_counts(counts, await connector.get_orchestrator_execution_counts())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Orchestrator execution stats failed for environment %s: %s", environment.id, exc)
+            errors.append(str(exc))
+
+    if not counts and errors:
+        base.error_message = "; ".join(errors)
         return base
+
+    return EnvironmentJobStats(
+        environment_id=environment.id,
+        environment_name=environment.name,
+        deployment_type=environment.deployment_type or "podman",
+        status=environment.status,
+        controller_configured=controller_configured,
+        orchestrator_configured=orchestrator_configured,
+        running=counts.get("running", 0),
+        pending=counts.get("pending", 0),
+        waiting=counts.get("waiting", 0),
+        failed=counts.get("failed", 0),
+        successful=counts.get("successful", 0),
+        canceled=counts.get("canceled", 0),
+        error=counts.get("error", 0),
+        total=sum(counts.values()),
+        error_message="; ".join(errors) if errors else None,
+    )
 
 
 def _normalize_status_filter(status: str | None) -> str | None | tuple[str, ...]:
     if not status:
         return None
     normalized = status.strip().lower()
+    if normalized in {"all", "*"}:
+        return None
     if normalized in {"active", "running,pending,waiting"}:
         return ACTIVE_JOB_STATUSES
     if "," in normalized:
@@ -68,40 +138,90 @@ def _normalize_status_filter(status: str | None) -> str | None | tuple[str, ...]
     return normalized
 
 
+def _controller_jobs(environment: ManagedEnvironment, items: list[dict[str, Any]]) -> list[ControllerJob]:
+    jobs: list[ControllerJob] = []
+    for item in items:
+        jobs.append(
+            ControllerJob(
+                id=str(item.get("id") or item.get("pk") or ""),
+                name=str(item.get("name") or item.get("description") or f"job-{item.get('id')}"),
+                status=str(item.get("status") or "unknown"),
+                job_type=item.get("type") or item.get("job_type"),
+                started=_as_timestamp(item.get("started")),
+                finished=_as_timestamp(item.get("finished")),
+                elapsed=_elapsed_seconds(
+                    _as_timestamp(item.get("started")),
+                    _as_timestamp(item.get("finished")),
+                    item.get("elapsed"),
+                ),
+                environment_id=environment.id,
+                environment_name=environment.name,
+                deployment_type=environment.deployment_type,
+                url=item.get("url") if isinstance(item.get("url"), str) else None,
+                source="controller",
+                metadata=item,
+            )
+        )
+    return [job for job in jobs if job.id]
+
+
+def _orchestrator_jobs(environment: ManagedEnvironment, items: list[dict[str, Any]]) -> list[ControllerJob]:
+    jobs: list[ControllerJob] = []
+    for item in items:
+        started = _as_timestamp(item.get("created_at") or item.get("started_at") or item.get("started"))
+        finished = _as_timestamp(item.get("completed_at") or item.get("finished_at") or item.get("finished"))
+        jobs.append(
+            ControllerJob(
+                id=str(item.get("id") or item.get("pk") or ""),
+                name=str(item.get("workflow_name") or item.get("name") or f"execution-{item.get('id')}"),
+                status=normalize_orchestrator_job_status(item.get("status") if isinstance(item.get("status"), str) else None),
+                job_type="orchestrator_execution",
+                started=started,
+                finished=finished,
+                elapsed=_elapsed_seconds(started, finished, item.get("elapsed")),
+                environment_id=environment.id,
+                environment_name=environment.name,
+                deployment_type=environment.deployment_type,
+                url=_orchestrator_job_url(environment, item),
+                source="orchestrator",
+                metadata={**item, "source_status": item.get("status")},
+            )
+        )
+    return [job for job in jobs if job.id]
+
+
 async def _jobs_for_environment(
     environment: ManagedEnvironment,
     *,
     status: str | None | tuple[str, ...],
     limit: int,
 ) -> list[ControllerJob]:
-    if not environment.controller_url and not environment.gateway_url:
+    controller_configured = _controller_configured(environment)
+    orchestrator_configured = _orchestrator_configured(environment)
+    if not controller_configured and not orchestrator_configured:
         return []
 
-    try:
-        connector = AAPConnector(environment)
-        raw_jobs = await connector.list_jobs(status=status, limit=limit)
-        jobs: list[ControllerJob] = []
-        for item in raw_jobs:
-            jobs.append(
-                ControllerJob(
-                    id=str(item.get("id") or item.get("pk") or ""),
-                    name=str(item.get("name") or item.get("description") or f"job-{item.get('id')}"),
-                    status=str(item.get("status") or "unknown"),
-                    job_type=item.get("type") or item.get("job_type"),
-                    started=item.get("started"),
-                    finished=item.get("finished"),
-                    elapsed=item.get("elapsed") if isinstance(item.get("elapsed"), (int, float)) else None,
-                    environment_id=environment.id,
-                    environment_name=environment.name,
-                    deployment_type=environment.deployment_type,
-                    url=item.get("url"),
-                    metadata=item,
+    connector = AAPConnector(environment)
+    jobs: list[ControllerJob] = []
+
+    if controller_configured:
+        try:
+            jobs.extend(_controller_jobs(environment, await connector.list_jobs(status=status, limit=limit)))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Job list failed for environment %s: %s", environment.id, exc)
+
+    if orchestrator_configured:
+        try:
+            jobs.extend(
+                _orchestrator_jobs(
+                    environment,
+                    await connector.list_orchestrator_executions(status=status, limit=limit),
                 )
             )
-        return [job for job in jobs if job.id]
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Job list failed for environment %s: %s", environment.id, exc)
-        return []
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Orchestrator execution list failed for environment %s: %s", environment.id, exc)
+
+    return jobs
 
 
 def _rollup(by_environment: list[EnvironmentJobStats]) -> FleetJobStatsResponse:

@@ -50,6 +50,7 @@ SETTINGS_ALLOWLIST = frozenset(
 )
 
 _SECRET_FRAGMENTS = ("PASSWORD", "SECRET", "TOKEN", "PRIVATE_KEY", "BIND_PASSWORD", "API_KEY")
+_ORCHESTRATOR_SKIP_FRAGMENTS = (*_SECRET_FRAGMENTS, "CERTIFICATE", "PROMPT")
 
 
 def _is_encrypted(value: Any) -> bool:
@@ -112,9 +113,40 @@ def eda_config(environment: ManagedEnvironment) -> dict[str, Any]:
     return config if isinstance(config, dict) else {}
 
 
+def sanitize_orchestrator_settings(items: list[dict[str, Any]] | None) -> dict[str, Any]:
+    sanitized: dict[str, Any] = {}
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "").strip()
+        if not key:
+            continue
+        upper = key.upper()
+        if any(fragment in upper for fragment in _ORCHESTRATOR_SKIP_FRAGMENTS):
+            continue
+        value_type = str(item.get("value_type") or "").lower()
+        if value_type in {"password", "secret"}:
+            continue
+        value = item.get("effective_value", item.get("value"))
+        if _is_encrypted(value):
+            continue
+        if isinstance(value, str) and len(value) > 400:
+            continue
+        sanitized[key] = _normalize_setting_value(value)
+    return sanitized
+
+
+def orchestrator_config(environment: ManagedEnvironment) -> dict[str, Any]:
+    summaries = (environment.summary or {}).get("service_summaries", {})
+    orchestrator = summaries.get("orchestrator") or {}
+    config = orchestrator.get("config")
+    return config if isinstance(config, dict) else {}
+
+
 def build_config_baseline(environments: list[ManagedEnvironment]) -> ConfigBaselineResponse:
     rows: list[ConfigBaselineEnvironment] = []
     setting_values: dict[str, dict[str, Any]] = {}
+    orchestrator_setting_values: dict[str, dict[str, Any]] = {}
     org_sets: dict[str, set[str]] = {}
     ee_sets: dict[str, set[str]] = {}
     group_sets: dict[str, set[str]] = {}
@@ -131,6 +163,24 @@ def build_config_baseline(environments: list[ManagedEnvironment]) -> ConfigBasel
                 ee_names.append(str(item["name"]))
             elif isinstance(item, str):
                 ee_names.append(item)
+
+        if getattr(environment, "kind", "aap") == "orchestrator":
+            orchestrator_settings = orchestrator_config(environment).get("settings")
+            if not isinstance(orchestrator_settings, dict):
+                orchestrator_settings = {}
+            rows.append(
+                ConfigBaselineEnvironment(
+                    id=environment.id,
+                    name=environment.name,
+                    settings=orchestrator_settings,
+                    organizations=[],
+                    execution_environments=[],
+                    instance_groups=[],
+                )
+            )
+            for key, value in orchestrator_settings.items():
+                orchestrator_setting_values.setdefault(key, {})[environment.name] = value
+            continue
 
         rows.append(
             ConfigBaselineEnvironment(
@@ -153,6 +203,10 @@ def build_config_baseline(environments: list[ManagedEnvironment]) -> ConfigBasel
         unique = {repr(value) for value in values.values()}
         if len(unique) > 1:
             drift.append(ConfigDriftItem(kind="setting", name=key, values=values))
+    for key, values in sorted(orchestrator_setting_values.items()):
+        unique = {repr(value) for value in values.values()}
+        if len(unique) > 1:
+            drift.append(ConfigDriftItem(kind="orchestrator_setting", name=key, values=values))
 
     if len(environments) > 1:
         _append_set_drift(drift, "organization", org_sets)

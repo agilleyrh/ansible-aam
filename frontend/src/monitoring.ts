@@ -1,10 +1,16 @@
 import { parseCapabilityProfile } from "./capabilities";
 import type { EnvironmentDetail, MonitoringEnvironment, ServiceSnapshot } from "./types";
-import { humanize } from "./utils";
+import { environmentKind, humanize } from "./utils";
 
-export const monitoredServices = ["gateway", "controller", "eda", "hub"] as const;
+export const aapMonitoredServices = ["gateway", "controller", "eda", "hub"] as const;
+export const orchestratorMonitoredServices = ["orchestrator"] as const;
+export const monitoredServices = [...aapMonitoredServices, ...orchestratorMonitoredServices] as const;
 
 type MonitoredService = (typeof monitoredServices)[number];
+
+export function monitoredServicesFor(value?: { kind?: string } | string | null): readonly MonitoredService[] {
+  return environmentKind(value) === "orchestrator" ? orchestratorMonitoredServices : aapMonitoredServices;
+}
 
 export type MonitoringPoint = {
   label: string;
@@ -114,13 +120,65 @@ export const monitoringPointGroups: MonitoringPointGroup[] = [
       { label: "Collections", service: "hub", key: "collection_count", description: "Collections surfaced by the hub search API." },
     ],
   },
+  {
+    id: "orchestrator",
+    title: "Automation Orchestrator monitoring points",
+    description: "Health, workflow, execution, integration, and approval signals from this Orchestrator estate.",
+    points: [
+      { label: "Orchestrator API", service: "orchestrator", key: "health", description: "Automation Orchestrator reachability." },
+      { label: "Workflows", service: "orchestrator", key: "workflow_count", description: "Workflows defined in Orchestrator." },
+      {
+        label: "Enabled workflows",
+        service: "orchestrator",
+        key: "enabled_workflow_count",
+        description: "Workflows currently enabled for execution.",
+      },
+      { label: "Executions", service: "orchestrator", key: "execution_count", description: "Workflow executions discovered." },
+      {
+        label: "Recent failed executions",
+        service: "orchestrator",
+        key: "failed_executions_recent",
+        description: "Failed or errored executions in the latest sample.",
+        tone: "danger",
+      },
+      {
+        label: "Running executions",
+        service: "orchestrator",
+        key: "running_executions",
+        description: "Executions currently running, pending, or paused.",
+      },
+      { label: "Projects", service: "orchestrator", key: "project_count", description: "Orchestrator projects." },
+      { label: "Integrations", service: "orchestrator", key: "integration_count", description: "Configured Orchestrator integrations." },
+      {
+        label: "Unhealthy integrations",
+        service: "orchestrator",
+        key: "unhealthy_integration_count",
+        description: "Integrations that failed validation.",
+        tone: "warning",
+      },
+      {
+        label: "Pending approvals",
+        service: "orchestrator",
+        key: "pending_approval_count",
+        description: "Approval requests waiting on an operator.",
+        tone: "warning",
+      },
+    ],
+  },
 ];
+
+export function monitoringPointGroupsFor(value?: { kind?: string } | string | null): MonitoringPointGroup[] {
+  if (environmentKind(value) === "orchestrator") {
+    return monitoringPointGroups.filter((group) => group.id === "orchestrator");
+  }
+  return monitoringPointGroups.filter((group) => group.id !== "orchestrator");
+}
 
 export function getSnapshot(snapshots: ServiceSnapshot[], service: string): ServiceSnapshot | undefined {
   return snapshots.find((snapshot) => snapshot.service === service);
 }
 
-export function getSnapshotHealth(snapshots: ServiceSnapshot[], service: MonitoredService): string {
+export function getSnapshotHealth(snapshots: ServiceSnapshot[], service: string): string {
   return getSnapshot(snapshots, service)?.health ?? "not_configured";
 }
 
@@ -169,9 +227,18 @@ export function getHealthScore(summary: Record<string, unknown>): number {
   return 0;
 }
 
-export function getCollectionProfile(record: MonitoringRecord): Array<{ label: string; value: string }> {
+export function getCollectionProfile(record: MonitoringRecord & { kind?: string }): Array<{ label: string; value: string }> {
   const { profile } = parseCapabilityProfile(record.capabilities);
+  if (environmentKind(record) === "orchestrator") {
+    return [
+      { label: "Product", value: "Automation Orchestrator" },
+      { label: "Auth mode", value: humanize(record.auth_mode) },
+      { label: "Verify TLS", value: record.verify_ssl ? "Enabled" : "Disabled" },
+      { label: "Sync interval", value: `${record.sync_interval_minutes} minutes` },
+    ];
+  }
   return [
+    { label: "Product", value: "Ansible Automation Platform" },
     { label: "Auth mode", value: humanize(record.auth_mode) },
     { label: "Verify TLS", value: record.verify_ssl ? "Enabled" : "Disabled" },
     { label: "Sync interval", value: `${record.sync_interval_minutes} minutes` },
@@ -189,8 +256,42 @@ export const serviceLabels: Record<string, string> = {
   controller: "Controller",
   eda: "Event-Driven Ansible",
   hub: "Automation Hub",
+  orchestrator: "Automation Orchestrator",
   sync: "Environment sync",
+  collector: "Collector",
 };
+
+export const resourceTypeLabels: Record<string, string> = {
+  workflow: "Orchestrator workflow",
+  execution: "Orchestrator execution",
+  integration: "Orchestrator integration",
+  workflow_job_template: "Controller workflow template",
+  job_template: "Job template",
+  running_job: "Controller job",
+  activation: "EDA activation",
+  repository: "Hub repository",
+  collection: "Hub collection",
+};
+
+export function serviceLabel(service: string): string {
+  return serviceLabels[service] ?? humanize(service);
+}
+
+export function resourceTypeLabel(resourceType: string): string {
+  return resourceTypeLabels[resourceType] ?? humanize(resourceType);
+}
+
+export function compareServices(left: string, right: string): number {
+  const leftRank = monitoredServices.indexOf(left as MonitoredService);
+  const rightRank = monitoredServices.indexOf(right as MonitoredService);
+  const leftOrder = leftRank === -1 ? 50 : leftRank;
+  const rightOrder = rightRank === -1 ? 50 : rightRank;
+  return leftOrder - rightOrder || left.localeCompare(right);
+}
+
+export function orderedServiceEntries<T>(services: Record<string, T>): Array<[string, T]> {
+  return Object.entries(services).sort(([left], [right]) => compareServices(left, right));
+}
 
 export type MonitoringFinding = {
   environmentId: string;
@@ -207,6 +308,7 @@ export type MonitoringFinding = {
 type FindingSource = {
   id: string;
   name: string;
+  kind?: string;
   last_sync_error?: string | null;
   snapshots: ServiceSnapshot[];
 };
@@ -252,6 +354,9 @@ export function explainServiceHealth(environment: FindingSource, service: Monito
   const activationCount = getNumericMetric(environment.snapshots, service, "activation_count");
   const repoCount = getNumericMetric(environment.snapshots, service, "repository_count");
   const collectionCount = getNumericMetric(environment.snapshots, service, "collection_count");
+  const failedExecutions = getNumericMetric(environment.snapshots, service, "failed_executions_recent");
+  const unhealthyIntegrations = getNumericMetric(environment.snapshots, service, "unhealthy_integration_count");
+  const workflowCount = getNumericMetric(environment.snapshots, service, "workflow_count");
   const storedReason = summaryString(summary, "health_reason");
   const storedAction = summaryString(summary, "health_action");
   const error = summaryString(summary, "error");
@@ -333,6 +438,32 @@ export function explainServiceHealth(environment: FindingSource, service: Monito
     };
   }
 
+  if (service === "orchestrator" && (failedExecutions > 0 || unhealthyIntegrations > 0 || workflowCount === 0)) {
+    const parts: string[] = [];
+    if (failedExecutions > 0) {
+      parts.push(`${failedExecutions} recent failed workflow execution(s)`);
+    }
+    if (unhealthyIntegrations > 0) {
+      parts.push(`${unhealthyIntegrations} integration(s) not available`);
+    }
+    if (workflowCount === 0) {
+      parts.push("no workflows were returned");
+    }
+    return {
+      environmentId: environment.id,
+      environmentName: environment.name,
+      service,
+      severity,
+      title: `${label} needs attention`,
+      reason: storedReason ?? `Automation Orchestrator is reachable, but ${parts.join(" and ")}.`,
+      resolution:
+        storedAction ??
+        "Open Automation Orchestrator to inspect failed executions, re-validate integrations, or publish a workflow.",
+      href: `/environments/${environment.id}`,
+      hrefLabel: "Open environment",
+    };
+  }
+
   return {
     environmentId: environment.id,
     environmentName: environment.name,
@@ -361,7 +492,7 @@ export function collectEnvironmentFindings(environment: FindingSource): Monitori
       hrefLabel: "Open environment and sync",
     });
   }
-  for (const service of monitoredServices) {
+  for (const service of monitoredServicesFor(environment)) {
     const finding = explainServiceHealth(environment, service);
     if (finding) {
       findings.push(finding);
