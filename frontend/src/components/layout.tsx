@@ -3,18 +3,12 @@ import {
   Card,
   CardBody,
   CardHeader,
-  Form,
-  FormGroup,
   Label,
   Masthead,
   MastheadBrand,
   MastheadContent,
   MastheadLogo,
   MastheadMain,
-  Modal,
-  ModalBody,
-  ModalFooter,
-  ModalHeader,
   Nav,
   NavItem,
   NavList,
@@ -24,7 +18,6 @@ import {
   PageSidebarBody,
   Stack,
   StackItem,
-  TextInput,
   Content,
   Title,
 } from "@patternfly/react-core";
@@ -42,13 +35,9 @@ export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const [passwordOpen, setPasswordOpen] = useState(false);
-  const [nextPassword, setNextPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordError, setPasswordError] = useState("");
-  const [passwordBusy, setPasswordBusy] = useState(false);
   const [alerts, setAlerts] = useState<FleetAlert[]>([]);
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [alertError, setAlertError] = useState("");
   const isSystemAdmin = user?.system_roles?.includes("admin") ?? false;
   const canManageAccess =
     isSystemAdmin ||
@@ -71,13 +60,18 @@ export function AppLayout() {
     let cancelled = false;
     const load = () => {
       api
-        .alerts()
+        .alerts(true)
         .then((items) => {
           if (!cancelled) {
             setAlerts(items);
+            setAlertError("");
           }
         })
-        .catch(() => undefined);
+        .catch((err: unknown) => {
+          if (!cancelled) {
+            setAlertError(err instanceof Error ? err.message : "Alerts could not be loaded.");
+          }
+        });
     };
     load();
     const timer = window.setInterval(load, 30000);
@@ -90,6 +84,9 @@ export function AppLayout() {
   function isActivePath(path: string) {
     return path === "/" ? location.pathname === path : location.pathname === path || location.pathname.startsWith(`${path}/`);
   }
+
+  const openAlerts = alerts.filter((alert) => !alert.acknowledged_at && !alert.resolved_at);
+  const closedAlerts = alerts.filter((alert) => alert.acknowledged_at || alert.resolved_at);
 
   const header = (
     <Masthead>
@@ -113,11 +110,6 @@ export function AppLayout() {
         <div className="aam-masthead-actions">
           <span className="aam-masthead-user">{user?.username}</span>
           {user?.system_roles?.includes("admin") ? <Label color="blue">Administrator</Label> : null}
-          {user?.id ? (
-            <Button variant="link" onClick={() => setPasswordOpen(true)}>
-              Password
-            </Button>
-          ) : null}
           <Button
             variant="link"
             onClick={() => {
@@ -129,22 +121,23 @@ export function AppLayout() {
           <div className="aam-alerts">
             <Button
               variant="plain"
-              aria-label={alerts.length ? `${alerts.length} critical alerts` : "No critical alerts"}
+              aria-label={openAlerts.length ? `${openAlerts.length} critical alerts` : "No critical alerts"}
               onClick={() => setAlertsOpen((open) => !open)}
             >
               <BellIcon />
-              {alerts.length ? <span className="aam-alerts__count">{alerts.length}</span> : null}
+              {openAlerts.length ? <span className="aam-alerts__count">{openAlerts.length}</span> : null}
             </Button>
             {alertsOpen ? (
               <div className="aam-alerts__panel" role="dialog" aria-label="Critical alerts">
                 <Title headingLevel="h2" size="md">
-                  Critical estates
+                  Critical alerts
                 </Title>
-                {alerts.length === 0 ? (
+                {alertError ? <p className="aam-muted">{alertError}</p> : null}
+                {openAlerts.length === 0 ? (
                   <p className="aam-muted">No open critical alerts.</p>
                 ) : (
                   <ul className="aam-alerts__list">
-                    {alerts.map((alert) => (
+                    {openAlerts.map((alert) => (
                       <li key={alert.id}>
                         <RouterLink to={`/environments/${alert.environment_id}`} onClick={() => setAlertsOpen(false)}>
                           {alert.environment_name}
@@ -154,10 +147,19 @@ export function AppLayout() {
                           variant="link"
                           isInline
                           onClick={() => {
+                            setAlertError("");
                             api
                               .acknowledgeAlert(alert.id)
-                              .then(() => setAlerts((current) => current.filter((item) => item.id !== alert.id)))
-                              .catch(() => undefined);
+                              .then(() =>
+                                setAlerts((current) =>
+                                  current.map((item) =>
+                                    item.id === alert.id ? { ...item, acknowledged_at: new Date().toISOString() } : item,
+                                  ),
+                                ),
+                              )
+                              .catch((err: unknown) =>
+                                setAlertError(err instanceof Error ? err.message : "The alert could not be dismissed."),
+                              );
                           }}
                         >
                           Dismiss
@@ -166,6 +168,25 @@ export function AppLayout() {
                     ))}
                   </ul>
                 )}
+                {closedAlerts.length ? (
+                  <>
+                    <Title headingLevel="h3" size="md">
+                      Recent
+                    </Title>
+                    <ul className="aam-alerts__list">
+                      {closedAlerts.slice(0, 6).map((alert) => (
+                        <li key={alert.id}>
+                          <RouterLink to={`/environments/${alert.environment_id}`} onClick={() => setAlertsOpen(false)}>
+                            {alert.environment_name}
+                          </RouterLink>
+                          <p>
+                            {alert.resolved_at ? "Recovered" : "Dismissed"} · {alert.message}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -216,60 +237,6 @@ export function AppLayout() {
           <Outlet />
         </div>
       </PageSection>
-      <Modal
-        isOpen={passwordOpen}
-        variant="small"
-        onClose={() => setPasswordOpen(false)}
-        aria-labelledby="change-password-title"
-      >
-        <ModalHeader title="Change password" labelId="change-password-title" />
-        <ModalBody>
-          <Form
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!user?.id) {
-                return;
-              }
-              if (nextPassword !== confirmPassword) {
-                setPasswordError("The passwords do not match.");
-                return;
-              }
-              setPasswordBusy(true);
-              setPasswordError("");
-              api
-                .updateAccessUser(user.id, { password: nextPassword })
-                .then(() => {
-                  setNextPassword("");
-                  setConfirmPassword("");
-                  setPasswordOpen(false);
-                })
-                .catch((err: unknown) => setPasswordError(err instanceof Error ? err.message : "The password could not be changed."))
-                .finally(() => setPasswordBusy(false));
-            }}
-          >
-            <FormGroup label="New password" fieldId="account-password" isRequired>
-              <TextInput id="account-password" type="password" value={nextPassword} onChange={(_event, value) => setNextPassword(value)} />
-            </FormGroup>
-            <FormGroup label="Confirm password" fieldId="account-password-confirm" isRequired>
-              <TextInput
-                id="account-password-confirm"
-                type="password"
-                value={confirmPassword}
-                onChange={(_event, value) => setConfirmPassword(value)}
-              />
-            </FormGroup>
-            {passwordError ? <p className="aam-muted">{passwordError}</p> : null}
-            <ModalFooter>
-              <Button type="submit" variant="primary" isDisabled={passwordBusy || nextPassword.length === 0} isLoading={passwordBusy}>
-                Save password
-              </Button>
-              <Button variant="link" onClick={() => setPasswordOpen(false)}>
-                Cancel
-              </Button>
-            </ModalFooter>
-          </Form>
-        </ModalBody>
-      </Modal>
     </Page>
   );
 }

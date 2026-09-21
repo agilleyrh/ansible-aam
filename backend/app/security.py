@@ -22,7 +22,7 @@ from app.services.access import (
     can_read_environment,
     load_profile,
 )
-from app.services.passwords import read_session_token
+from app.services.passwords import read_session_token, session_still_valid
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +74,18 @@ def _profile_from_token(db: Session, token: str | None) -> AccessProfile | None:
     if not payload:
         return None
     user = db.get(LocalUser, str(payload.get("sub") or ""))
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or not session_still_valid(payload, user.sessions_valid_after):
         return None
     return load_profile(db, user)
+
+
+def environment_is_visible(user: UserContext, environment_id: str | None) -> bool:
+    if not environment_id:
+        return True
+    visible = user.visible_environment_ids
+    if visible is None:
+        return True
+    return environment_id in visible
 
 
 async def resolve_user(request: Request, db: Session = Depends(get_db)) -> UserContext:
@@ -123,6 +132,8 @@ def require_roles(*expected_roles: str) -> Callable:
         profile = current_profile(request)
         environment_id = request.path_params.get("environment_id")
         if profile is None:
+            if not environment_is_visible(user, environment_id):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot view this environment.")
             if "admin" in user.system_roles:
                 return user
             if "aam.viewer" in expected_roles and "aam.operator" not in expected_roles and "aam.admin" not in expected_roles:

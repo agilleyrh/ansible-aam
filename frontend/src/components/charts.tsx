@@ -66,7 +66,7 @@ export function DonutChart({ slices, caption }: DonutProps) {
 
 type Column = {
   label: string;
-  value: number;
+  value: number | null;
 };
 
 export function ColumnChart({
@@ -78,22 +78,33 @@ export function ColumnChart({
   emptyText?: string;
   label?: string;
 }) {
-  const max = Math.max(...items.map((item) => item.value), 1);
-  if (items.every((item) => item.value === 0)) {
+  const hasNumber = items.some((item) => typeof item.value === "number");
+  const allZero = items.every((item) => item.value == null || item.value === 0);
+  const anyGap = items.some((item) => item.value == null);
+  if (!hasNumber || (allZero && !anyGap)) {
     return <p className="aam-muted">{emptyText}</p>;
   }
 
+  const max = Math.max(...items.map((item) => (typeof item.value === "number" ? item.value : 0)), 1);
+
   return (
     <div className="aam-columns" role="img" aria-label={label}>
-      {items.map((item) => (
-        <div key={item.label} className="aam-columns__item">
-          <div className="aam-columns__value">{item.value}</div>
-          <div className="aam-columns__track">
-            <div className="aam-columns__bar" style={{ height: `${Math.max((item.value / max) * 100, item.value > 0 ? 8 : 0)}%` }} />
+      {items.map((item) => {
+        const missing = item.value == null;
+        const value = item.value ?? 0;
+        return (
+          <div key={item.label} className="aam-columns__item">
+            <div className="aam-columns__value">{missing ? "–" : item.value}</div>
+            <div className="aam-columns__track">
+              <div
+                className="aam-columns__bar"
+                style={{ height: missing ? "0%" : `${Math.max((value / max) * 100, value > 0 ? 8 : 0)}%` }}
+              />
+            </div>
+            <div className="aam-columns__label">{item.label}</div>
           </div>
-          <div className="aam-columns__label">{item.label}</div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -148,6 +159,6 @@ export function averageScoreByDay(
   }
   return buckets.map((bucket) => ({
     label: bucket.day.toLocaleDateString(undefined, { weekday: "short" }),
-    value: bucket.count ? Math.round(bucket.total / bucket.count) : 0,
+    value: bucket.count ? Math.round(bucket.total / bucket.count) : null,
   }));
 }

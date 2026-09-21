@@ -64,6 +64,30 @@ def _orchestrator_execution_matches(status: str | None, wanted: str | None | tup
     return normalized == expected or raw == expected
 
 
+_ACTION_PATH_PREFIXES: dict[str, tuple[str, ...]] = {
+    "launch_job_template": ("/api/controller/v2/job_templates/",),
+    "launch_workflow_job_template": ("/api/controller/v2/workflow_job_templates/",),
+    "sync_project": ("/api/controller/v2/projects/",),
+    "set_activation_state": ("/api/eda/v1/activations/", "/api/eda/v1/rulebook_activations/"),
+    "cancel_job": ("/api/controller/v2/jobs/",),
+    "cancel_workflow_job": ("/api/controller/v2/workflow_jobs/",),
+    "cancel_execution": ("/api/v1/executions/",),
+    "sync_repository": ("/api/galaxy/", "/api/automation-hub/"),
+    "patch_controller_settings": ("/api/controller/v2/settings/",),
+    "decide_approval": ("/api/v1/approvals/",),
+}
+
+
+def allowed_action_path(action: str, path: str | None, default: str) -> str:
+    chosen = (path or default).strip()
+    if not chosen.startswith("/") or chosen.startswith("//") or "://" in chosen or ".." in chosen:
+        raise ValueError("Action path is not allowed.")
+    prefixes = _ACTION_PATH_PREFIXES.get(action, ())
+    if not any(chosen.startswith(prefix) for prefix in prefixes):
+        raise ValueError("Action path is not allowed.")
+    return chosen
+
+
 def _collection_failure(service: str, exc: Exception) -> dict[str, Any]:
     error = str(exc)
     first_line = error.splitlines()[0] if error else f"{service} collection failed"
@@ -86,6 +110,7 @@ DEFAULT_SERVICE_PATHS: dict[str, dict[str, str]] = {
     "controller": {
         "ping": "/api/controller/v2/ping/",
         "jobs": "/api/controller/v2/jobs/",
+        "workflow_jobs": "/api/controller/v2/workflow_jobs/",
         "job_templates": "/api/controller/v2/job_templates/",
         "workflow_job_templates": "/api/controller/v2/workflow_job_templates/",
         "inventories": "/api/controller/v2/inventories/",
@@ -810,7 +835,32 @@ class AAPConnector:
         if not self._component_url("controller"):
             return []
         jobs_path = self.service_paths["controller"]["jobs"]
+        workflow_path = self.service_paths["controller"].get("workflow_jobs") or "/api/controller/v2/workflow_jobs/"
+        playbook_jobs = await self._controller_job_page(jobs_path, status=status, limit=limit)
+        try:
+            workflow_jobs = await self._controller_job_page(workflow_path, status=status, limit=limit)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Workflow job list skipped: %s", exc)
+            workflow_jobs = []
+        for item in workflow_jobs:
+            item.setdefault("type", "workflow_job")
+        merged: dict[str, dict[str, Any]] = {}
+        for item in [*playbook_jobs, *workflow_jobs]:
+            external_id = str(item.get("id") or item.get("pk") or "")
+            key = f"{item.get('type') or 'job'}:{external_id}"
+            if external_id:
+                merged[key] = item
+        jobs = list(merged.values())
+        jobs.sort(key=lambda item: str(item.get("started") or ""), reverse=True)
+        return jobs[:limit]
 
+    async def _controller_job_page(
+        self,
+        jobs_path: str,
+        *,
+        status: str | None | tuple[str, ...] = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
         if isinstance(status, tuple):
             if not status:
                 return []
@@ -858,6 +908,18 @@ class AAPConnector:
             if len(matched) >= limit:
                 break
         return matched
+
+    async def list_orchestrator_approvals(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        if not self._component_url("orchestrator"):
+            return []
+        path = self.service_paths.get("orchestrator", {}).get("approvals") or "/api/v1/approvals"
+        _, records = await self._safe_orchestrator_list(path, limit=limit, extra_params={"status": "pending"})
+        pending = [
+            item
+            for item in records
+            if str(item.get("status") or "pending").strip().lower() in {"pending", "waiting"}
+        ]
+        return pending[:limit]
 
     async def get_orchestrator_execution_counts(self) -> dict[str, int]:
         counts = {
@@ -1281,68 +1343,93 @@ class AAPConnector:
         if action == "launch_job_template":
             service = "controller"
             response = await self._controller_request_json(
-                path_override or f"/api/controller/v2/job_templates/{target_id}/launch/",
+                allowed_action_path(action, path_override, f"/api/controller/v2/job_templates/{target_id}/launch/"),
                 method="POST",
                 json_body=payload,
             )
         elif action == "launch_workflow_job_template":
             service = "controller"
             response = await self._controller_request_json(
-                path_override or f"/api/controller/v2/workflow_job_templates/{target_id}/launch/",
+                allowed_action_path(action, path_override, f"/api/controller/v2/workflow_job_templates/{target_id}/launch/"),
                 method="POST",
                 json_body=payload,
             )
         elif action == "sync_project":
             service = "controller"
             response = await self._controller_request_json(
-                path_override or f"/api/controller/v2/projects/{target_id}/update/",
+                allowed_action_path(action, path_override, f"/api/controller/v2/projects/{target_id}/update/"),
                 method="POST",
                 json_body=payload,
             )
         elif action == "set_activation_state":
             service = "eda"
+            candidates = [
+                f"/api/eda/v1/activations/{target_id}/",
+                f"/api/eda/v1/rulebook_activations/{target_id}/",
+            ]
+            if path_override:
+                candidates = [allowed_action_path(action, path_override, candidates[0])]
             response = await self._request_json_candidates(
                 self._component_url("eda"),
-                [
-                    path_override,
-                    f"/api/eda/v1/activations/{target_id}/",
-                    f"/api/eda/v1/rulebook_activations/{target_id}/",
-                ],
+                candidates,
                 method="PATCH",
                 json_body={"is_enabled": payload.get("enabled", True)},
             )
         elif action == "cancel_job":
             service = "controller"
             response = await self._controller_request_json(
-                path_override or f"/api/controller/v2/jobs/{target_id}/cancel/",
+                allowed_action_path(action, path_override, f"/api/controller/v2/jobs/{target_id}/cancel/"),
+                method="POST",
+                json_body=None,
+            )
+        elif action == "cancel_workflow_job":
+            service = "controller"
+            response = await self._controller_request_json(
+                allowed_action_path(action, path_override, f"/api/controller/v2/workflow_jobs/{target_id}/cancel/"),
                 method="POST",
                 json_body=None,
             )
         elif action == "cancel_execution":
             service = "orchestrator"
             response = await self._orchestrator_request_json(
-                path_override or f"/api/v1/executions/{target_id}/cancel",
+                allowed_action_path(action, path_override, f"/api/v1/executions/{target_id}/cancel"),
                 method="POST",
+            )
+            if not isinstance(response, dict):
+                response = {"result": response}
+        elif action == "decide_approval":
+            service = "orchestrator"
+            decision = str(payload.get("decision") or "")
+            if decision not in {"approve", "reject"}:
+                raise ValueError("Approval decision must be approve or reject.")
+            note = payload.get("note")
+            body = {"note": note} if isinstance(note, str) and note.strip() else None
+            response = await self._orchestrator_request_json(
+                allowed_action_path(action, path_override, f"/api/v1/approvals/{target_id}/{decision}"),
+                method="POST",
+                json_body=body,
             )
             if not isinstance(response, dict):
                 response = {"result": response}
         elif action == "sync_repository":
             service = "hub"
+            candidates = [
+                f"/api/galaxy/_ui/v1/execution-environments/repositories/{target_id}/sync/",
+                f"/api/automation-hub/_ui/v1/repositories/{target_id}/sync/",
+                f"/api/galaxy/v3/plugin/ansible/content/published/sync/",
+            ]
+            if path_override:
+                candidates = [allowed_action_path(action, path_override, candidates[0])]
             response = await self._request_json_candidates(
                 self._component_url("hub"),
-                [
-                    path_override,
-                    f"/api/galaxy/_ui/v1/execution-environments/repositories/{target_id}/sync/",
-                    f"/api/automation-hub/_ui/v1/repositories/{target_id}/sync/",
-                    f"/api/galaxy/v3/plugin/ansible/content/published/sync/",
-                ],
+                candidates,
                 method="POST",
                 json_body=payload or None,
             )
         elif action == "patch_controller_settings":
             service = "controller"
             response = await self._controller_request_json(
-                path_override or "/api/controller/v2/settings/all/",
+                allowed_action_path(action, path_override, "/api/controller/v2/settings/all/"),
                 method="PATCH",
                 json_body=payload,
             )

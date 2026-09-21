@@ -112,6 +112,7 @@ class FleetAlert(Base, TimestampedMixin):
     severity: Mapped[str] = mapped_column(String(20), default="critical")
     message: Mapped[str] = mapped_column(Text, default="")
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ManagedResource(Base, TimestampedMixin):
@@ -199,6 +200,7 @@ class LocalUser(Base, TimestampedMixin):
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     source: Mapped[str] = mapped_column(String(40), default="local")
+    sessions_valid_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AccessGroup(Base, TimestampedMixin):

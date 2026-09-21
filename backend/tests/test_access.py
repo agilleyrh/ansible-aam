@@ -13,6 +13,7 @@ def test_session_token_round_trip():
     payload = read_session_token(token)
     assert payload is not None
     assert payload["sub"] == "user-1"
+    assert payload["iat"]
     assert read_session_token(token + "tampered") is None
 
 
@@ -69,8 +70,47 @@ def test_critical_transition_records_history_and_one_alert():
         record_fleet_signal(db, environment, previous_status="critical", status="healthy", health_score=95)
         db.commit()
         db.refresh(alerts[0])
-        assert alerts[0].acknowledged_at is not None
+        assert alerts[0].acknowledged_at is None
+        assert alerts[0].resolved_at is not None
         assert len(db.scalars(select(HealthSample)).all()) == 3
+
+
+def test_password_change_invalidates_older_sessions():
+    from datetime import datetime, timedelta, timezone
+
+    from app.services.passwords import issue_session_token, read_session_token, session_still_valid
+
+    token = issue_session_token("user-1", "admin")
+    payload = read_session_token(token)
+    assert payload is not None
+    assert session_still_valid(payload, None)
+    assert not session_still_valid(payload, datetime.now(timezone.utc) + timedelta(seconds=5))
+
+
+def test_header_viewer_cannot_see_unassigned_environment():
+    from app.schemas import UserContext
+    from app.security import environment_is_visible
+
+    viewer = UserContext(username="gateway", roles=["aam.viewer"], system_roles=["authenticated"], visible_environment_ids=[])
+    assert environment_is_visible(viewer, "env-1") is False
+    admin = UserContext(username="admin", roles=["aam.admin"], system_roles=["admin"], visible_environment_ids=None)
+    assert environment_is_visible(admin, "env-1") is True
+
+
+def test_action_paths_stay_on_the_action():
+    from app.services.connectors import allowed_action_path
+
+    assert allowed_action_path("cancel_job", None, "/api/controller/v2/jobs/9/cancel/").endswith("/cancel/")
+    try:
+        allowed_action_path("cancel_job", "/api/controller/v2/users/", "/api/controller/v2/jobs/9/cancel/")
+        raise AssertionError("expected rejection")
+    except ValueError:
+        pass
+    try:
+        allowed_action_path("decide_approval", "https://evil.example/steal", "/api/v1/approvals/1/approve")
+        raise AssertionError("expected rejection")
+    except ValueError:
+        pass
 
 
 def test_cancel_execution_is_a_remote_action():

@@ -91,6 +91,7 @@ def record_fleet_signal(
         select(FleetAlert).where(
             FleetAlert.environment_id == environment.id,
             FleetAlert.acknowledged_at.is_(None),
+            FleetAlert.resolved_at.is_(None),
         )
     ).first()
     if status == "critical":
@@ -104,7 +105,7 @@ def record_fleet_signal(
                 )
             )
     elif open_alert is not None:
-        open_alert.acknowledged_at = now
+        open_alert.resolved_at = now
 
 
 def run_environment_sync(environment_id: str, requested_by: str = "system") -> None:
@@ -117,6 +118,7 @@ def run_environment_sync(environment_id: str, requested_by: str = "system") -> N
     )
     db.add(execution)
     db.commit()
+    execution_id = execution.id
 
     try:
         environment = db.get(ManagedEnvironment, environment_id)
@@ -170,14 +172,18 @@ def run_environment_sync(environment_id: str, requested_by: str = "system") -> N
         execution.details = {"resource_count": len(result.get("resources", []))}
         db.commit()
     except Exception as exc:  # noqa: BLE001
-        execution.status = "failed"
-        execution.finished_at = datetime.now(timezone.utc)
-        execution.error_text = str(exc)
+        db.rollback()
+        failed = db.get(SyncExecution, execution_id)
+        if failed is not None:
+            failed.status = "failed"
+            failed.finished_at = datetime.now(timezone.utc)
+            failed.error_text = str(exc)
         environment = db.get(ManagedEnvironment, environment_id)
         if environment is not None:
             previous_status = environment.status
             environment.status = "critical"
             environment.last_sync_error = str(exc)
+            environment.last_synced_at = datetime.now(timezone.utc)
             record_fleet_signal(
                 db,
                 environment,

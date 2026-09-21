@@ -25,7 +25,7 @@ import { DonutChart } from "../components/charts";
 import { StatCard } from "../components/stat-card";
 import { StatusPill } from "../components/status-pill";
 import { serviceLabel } from "../monitoring";
-import type { ControllerJob, EnvironmentSummary, FleetJobsResponse } from "../types";
+import type { ControllerJob, EnvironmentSummary, FleetJobsResponse, OrchestratorApproval } from "../types";
 import { deploymentTypeLabel, environmentKind, formatDateTime } from "../utils";
 
 const STATUS_FILTERS = [
@@ -44,6 +44,13 @@ const SOURCE_FILTERS = [
   { value: "controller", label: "Controller jobs" },
   { value: "orchestrator", label: "Orchestrator executions" },
 ];
+
+function cancelAction(job: ControllerJob): "cancel_job" | "cancel_workflow_job" | "cancel_execution" {
+  if ((job.source ?? "controller") === "orchestrator") {
+    return "cancel_execution";
+  }
+  return (job.job_type ?? "").toLowerCase().includes("workflow") ? "cancel_workflow_job" : "cancel_job";
+}
 
 function canCancel(job: ControllerJob): boolean {
   const source = job.source ?? "controller";
@@ -69,6 +76,8 @@ export function JobsPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [approvals, setApprovals] = useState<OrchestratorApproval[]>([]);
+  const [decidingId, setDecidingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const response = await api.jobs({
@@ -82,8 +91,11 @@ export function JobsPage() {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    Promise.all([load(), api.environments()])
-      .then(([, envItems]) => setEnvironments(envItems))
+    Promise.all([load(), api.environments(), api.approvals()])
+      .then(([, envItems, approvalItems]) => {
+        setEnvironments(envItems);
+        setApprovals(approvalItems);
+      })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, [load]);
@@ -91,6 +103,7 @@ export function JobsPage() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       load().catch((err: Error) => setError(err.message));
+      api.approvals().then(setApprovals).catch(() => undefined);
     }, 15000);
     return () => window.clearInterval(timer);
   }, [load]);
@@ -102,7 +115,7 @@ export function JobsPage() {
     try {
       await api.executeAction({
         environment_id: job.environment_id,
-        action: (job.source ?? "controller") === "orchestrator" ? "cancel_execution" : "cancel_job",
+        action: cancelAction(job),
         target_id: job.id,
         target_name: job.name,
       });
@@ -112,6 +125,27 @@ export function JobsPage() {
       setError(err instanceof Error ? err.message : "Unable to cancel job.");
     } finally {
       setCancelingId(null);
+    }
+  }
+
+  async function decideApproval(approval: OrchestratorApproval, decision: "approve" | "reject") {
+    setDecidingId(`${approval.environment_id}:${approval.id}:${decision}`);
+    setError(null);
+    setMessage(null);
+    try {
+      await api.executeAction({
+        environment_id: approval.environment_id,
+        action: "decide_approval",
+        target_id: approval.id,
+        target_name: approval.name,
+        payload: { decision },
+      });
+      setApprovals((current) => current.filter((item) => item.id !== approval.id || item.environment_id !== approval.environment_id));
+      setMessage(`${decision === "approve" ? "Approved" : "Rejected"} ${approval.name} on ${approval.environment_name}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The approval could not be recorded.");
+    } finally {
+      setDecidingId(null);
     }
   }
 
@@ -150,6 +184,7 @@ export function JobsPage() {
           <StatCard label="Pending" value={stats?.pending ?? 0} />
           <StatCard label="Waiting" value={stats?.waiting ?? 0} />
           <StatCard label="Failed" value={stats?.failed ?? 0} />
+          <StatCard label="Error" value={stats?.error ?? 0} />
           <StatCard label="Successful" value={stats?.successful ?? 0} />
           <StatCard label="Environments" value={stats?.environment_count ?? 0} />
         </Gallery>
@@ -170,7 +205,8 @@ export function JobsPage() {
                   { label: "Running", value: stats.running, color: "var(--pf-t--global--color--status--info--default)" },
                   { label: "Pending", value: stats.pending, color: "var(--pf-t--global--color--status--warning--default)" },
                   { label: "Waiting", value: stats.waiting, color: "var(--pf-t--global--color--brand--default)" },
-                  { label: "Failed", value: stats.failed + stats.error, color: "var(--pf-t--global--color--status--danger--default)" },
+                  { label: "Failed", value: stats.failed, color: "var(--pf-t--global--color--status--danger--default)" },
+                  { label: "Error", value: stats.error, color: "var(--pf-t--global--color--status--danger--default)" },
                   { label: "Successful", value: stats.successful, color: "var(--pf-t--global--color--status--success--default)" },
                   { label: "Canceled", value: stats.canceled, color: "var(--pf-t--global--icon--color--subtle)" },
                 ]}
@@ -228,6 +264,64 @@ export function JobsPage() {
           </CardBody>
         </Card>
       </StackItem>
+
+      {approvals.length ? (
+        <StackItem>
+          <Card>
+            <CardHeader>
+              <Title headingLevel="h2" size="lg">
+                Pending approvals
+              </Title>
+            </CardHeader>
+            <CardBody>
+              <Table aria-label="Pending Automation Orchestrator approvals" variant="compact">
+                <Thead>
+                  <Tr>
+                    <Th>Approval</Th>
+                    <Th>Environment</Th>
+                    <Th>Workflow</Th>
+                    <Th>Actions</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {approvals.map((approval) => (
+                    <Tr key={`${approval.environment_id}:${approval.id}`}>
+                      <Td dataLabel="Approval">
+                        <div className="aam-data-list__primary">{approval.name}</div>
+                        {approval.message ? <div className="aam-data-list__secondary">{approval.message}</div> : null}
+                      </Td>
+                      <Td dataLabel="Environment">
+                        <Link to={`/environments/${approval.environment_id}`}>{approval.environment_name}</Link>
+                      </Td>
+                      <Td dataLabel="Workflow">{approval.workflow_name || "—"}</Td>
+                      <Td dataLabel="Actions">
+                        <div className="aam-link-cluster">
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            isLoading={decidingId === `${approval.environment_id}:${approval.id}:approve`}
+                            onClick={() => decideApproval(approval, "approve")}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            isLoading={decidingId === `${approval.environment_id}:${approval.id}:reject`}
+                            onClick={() => decideApproval(approval, "reject")}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </CardBody>
+          </Card>
+        </StackItem>
+      ) : null}
 
       <StackItem>
         <Card>
