@@ -18,13 +18,14 @@ import {
 
 import { api } from "../api";
 import { ActivityTable } from "../components/activity-table";
+import { activityByDay, averageScoreByDay, ColumnChart, DonutChart } from "../components/charts";
 import { EmptyState } from "../components/empty-state";
 import { LinkButton } from "../components/link-button";
 import { MetricBarChart } from "../components/metric-bar-chart";
 import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
 import { orderedServiceEntries, resourceTypeLabel, serviceLabel } from "../monitoring";
-import type { ActivityEvent, DashboardResponse, EnvironmentSummary } from "../types";
+import type { ActivityEvent, DashboardResponse, EnvironmentSummary, HealthSample } from "../types";
 import { environmentKind, environmentKindLabel, humanize } from "../utils";
 
 function getProgressVariant(name: string): "danger" | "success" | "warning" | undefined {
@@ -86,6 +87,7 @@ function coverageEntries(breakdown: Record<string, number>): Array<[string, numb
 export function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [healthHistory, setHealthHistory] = useState<HealthSample[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,8 +95,12 @@ export function DashboardPage() {
     const controller = new AbortController();
     setLoading(true);
 
-    Promise.allSettled([api.dashboard(controller.signal), api.activity(undefined, controller.signal)])
-      .then(([dashboardResult, activityResult]) => {
+    Promise.allSettled([
+      api.dashboard(controller.signal),
+      api.activity(undefined, controller.signal),
+      api.healthHistory(controller.signal),
+    ])
+      .then(([dashboardResult, activityResult, historyResult]) => {
         if (controller.signal.aborted) {
           return;
         }
@@ -106,6 +112,9 @@ export function DashboardPage() {
         }
         if (activityResult.status === "fulfilled") {
           setActivity(activityResult.value);
+        }
+        if (historyResult.status === "fulfilled") {
+          setHealthHistory(historyResult.value);
         }
       })
       .finally(() => {
@@ -227,6 +236,61 @@ export function DashboardPage() {
         <>
           <StackItem>
             <Grid hasGutter>
+              <GridItem md={5} lg={4}>
+                <Card isFullHeight>
+                  <CardHeader>
+                    <Title headingLevel="h2" size="lg">
+                      Fleet health
+                    </Title>
+                  </CardHeader>
+                  <CardBody>
+                    <DonutChart
+                      caption="Estates"
+                      slices={[
+                        { label: "Healthy", value: data.healthy_count, color: "var(--pf-t--global--color--status--success--default)" },
+                        { label: "Warning", value: data.warning_count, color: "var(--pf-t--global--color--status--warning--default)" },
+                        { label: "Critical", value: data.critical_count, color: "var(--pf-t--global--color--status--danger--default)" },
+                      ]}
+                    />
+                  </CardBody>
+                </Card>
+              </GridItem>
+              <GridItem md={7} lg={8}>
+                <Stack hasGutter>
+                  <StackItem>
+                    <Card>
+                      <CardHeader>
+                        <Title headingLevel="h2" size="lg">
+                          Health this week
+                        </Title>
+                      </CardHeader>
+                      <CardBody>
+                        <ColumnChart
+                          items={averageScoreByDay(healthHistory)}
+                          emptyText="Sync an environment to start a health trend."
+                          label="Average health score by day"
+                        />
+                      </CardBody>
+                    </Card>
+                  </StackItem>
+                  <StackItem>
+                    <Card>
+                      <CardHeader>
+                        <Title headingLevel="h2" size="lg">
+                          Activity this week
+                        </Title>
+                      </CardHeader>
+                      <CardBody>
+                        <ColumnChart items={activityByDay(activity.map((event) => event.created_at))} />
+                      </CardBody>
+                    </Card>
+                  </StackItem>
+                </Stack>
+              </GridItem>
+            </Grid>
+          </StackItem>
+          <StackItem>
+            <Grid hasGutter>
               <GridItem lg={6}>
                 <Card  isFullHeight>
                   <CardHeader>
@@ -244,23 +308,30 @@ export function DashboardPage() {
                     </Stack>
                   </CardHeader>
                   <CardBody>
-                    <Stack hasGutter>
-                      {Object.entries(data.compliance).map(([key, value]) => {
-                        const total = Object.values(data.compliance).reduce((sum, count) => sum + count, 0) || 1;
-                        return (
-                        <StackItem key={key}>
-                          <Progress
-                            title={humanize(key)}
-                            value={(value / total) * 100}
-                            measureLocation="outside"
-                            label={String(value)}
-                            valueText={`${value} of ${total} policy results`}
-                            variant={getProgressVariant(key)}
-                          />
-                        </StackItem>
-                        );
-                      })}
-                    </Stack>
+                    {Object.keys(data.compliance).length === 0 ? (
+                      <EmptyState
+                        title="No policy results yet"
+                        description="Create a governance policy and push it to the fleet to see compliant and noncompliant counts here."
+                      />
+                    ) : (
+                      <Stack hasGutter>
+                        {Object.entries(data.compliance).map(([key, value]) => {
+                          const total = Object.values(data.compliance).reduce((sum, count) => sum + count, 0) || 1;
+                          return (
+                            <StackItem key={key}>
+                              <Progress
+                                title={humanize(key)}
+                                value={(value / total) * 100}
+                                measureLocation="outside"
+                                label={String(value)}
+                                valueText={`${value} of ${total} policy results`}
+                                variant={getProgressVariant(key)}
+                              />
+                            </StackItem>
+                          );
+                        })}
+                      </Stack>
+                    )}
                   </CardBody>
                 </Card>
               </GridItem>

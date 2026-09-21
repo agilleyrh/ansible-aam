@@ -1318,6 +1318,14 @@ class AAPConnector:
                 method="POST",
                 json_body=None,
             )
+        elif action == "cancel_execution":
+            service = "orchestrator"
+            response = await self._orchestrator_request_json(
+                path_override or f"/api/v1/executions/{target_id}/cancel",
+                method="POST",
+            )
+            if not isinstance(response, dict):
+                response = {"result": response}
         elif action == "sync_repository":
             service = "hub"
             response = await self._request_json_candidates(

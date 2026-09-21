@@ -21,6 +21,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { EmptyState } from "../components/empty-state";
 import { PageHeader } from "../components/page-header";
+import { DonutChart } from "../components/charts";
 import { StatCard } from "../components/stat-card";
 import { StatusPill } from "../components/status-pill";
 import { serviceLabel } from "../monitoring";
@@ -45,7 +46,9 @@ const SOURCE_FILTERS = [
 ];
 
 function canCancel(job: ControllerJob): boolean {
-  return (job.source ?? "controller") === "controller" && ["running", "pending", "waiting", "new"].includes(job.status.toLowerCase());
+  const source = job.source ?? "controller";
+  const active = ["running", "pending", "waiting", "new"].includes(job.status.toLowerCase());
+  return active && (source === "controller" || source === "orchestrator");
 }
 
 function resolveJobUrl(job: ControllerJob): string | null {
@@ -99,7 +102,7 @@ export function JobsPage() {
     try {
       await api.executeAction({
         environment_id: job.environment_id,
-        action: "cancel_job",
+        action: (job.source ?? "controller") === "orchestrator" ? "cancel_execution" : "cancel_job",
         target_id: job.id,
         target_name: job.name,
       });
@@ -151,6 +154,31 @@ export function JobsPage() {
           <StatCard label="Environments" value={stats?.environment_count ?? 0} />
         </Gallery>
       </StackItem>
+
+      {stats ? (
+        <StackItem>
+          <Card>
+            <CardHeader>
+              <Title headingLevel="h2" size="lg">
+                Outcome mix
+              </Title>
+            </CardHeader>
+            <CardBody>
+              <DonutChart
+                caption="Jobs"
+                slices={[
+                  { label: "Running", value: stats.running, color: "var(--pf-t--global--color--status--info--default)" },
+                  { label: "Pending", value: stats.pending, color: "var(--pf-t--global--color--status--warning--default)" },
+                  { label: "Waiting", value: stats.waiting, color: "var(--pf-t--global--color--brand--default)" },
+                  { label: "Failed", value: stats.failed + stats.error, color: "var(--pf-t--global--color--status--danger--default)" },
+                  { label: "Successful", value: stats.successful, color: "var(--pf-t--global--color--status--success--default)" },
+                  { label: "Canceled", value: stats.canceled, color: "var(--pf-t--global--icon--color--subtle)" },
+                ]}
+              />
+            </CardBody>
+          </Card>
+        </StackItem>
+      ) : null}
 
       <StackItem>
         <Card>

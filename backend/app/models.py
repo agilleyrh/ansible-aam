@@ -94,6 +94,26 @@ class ServiceSnapshot(Base, TimestampedMixin):
     environment: Mapped[ManagedEnvironment] = relationship("ManagedEnvironment", back_populates="snapshots")
 
 
+class HealthSample(Base, TimestampedMixin):
+    __tablename__ = "health_samples"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    environment_id: Mapped[str] = mapped_column(ForeignKey("managed_environments.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="unknown")
+    health_score: Mapped[int] = mapped_column(Integer, default=0)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class FleetAlert(Base, TimestampedMixin):
+    __tablename__ = "fleet_alerts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    environment_id: Mapped[str] = mapped_column(ForeignKey("managed_environments.id", ondelete="CASCADE"), index=True)
+    severity: Mapped[str] = mapped_column(String(20), default="critical")
+    message: Mapped[str] = mapped_column(Text, default="")
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class ManagedResource(Base, TimestampedMixin):
     __tablename__ = "managed_resources"
     __table_args__ = (

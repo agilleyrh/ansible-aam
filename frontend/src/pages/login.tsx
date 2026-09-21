@@ -6,6 +6,8 @@ import {
   Button,
   Form,
   FormGroup,
+  FormSelect,
+  FormSelectOption,
   List,
   ListItem,
   LoginForm,
@@ -87,8 +89,9 @@ export function SignInPage() {
 
   return (
     <LoginPage
+      className="aam-login"
       brandImgAlt="Ansible"
-      brandImgSrc=""
+      brandImgSrc="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3C/svg%3E"
       loginTitle="Sign in to Advanced Automation Manager"
       textContent="Local accounts stay available. OpenID Connect, LDAP, and Active Directory can be added by a system administrator."
     >
@@ -139,17 +142,11 @@ export function SignInPage() {
             Directory
           </Title>
           <FormGroup label="Provider" fieldId="directory-provider">
-            <select
-              id="directory-provider"
-              value={directoryProvider}
-              onChange={(event) => setDirectoryProvider(event.target.value)}
-            >
+            <FormSelect id="directory-provider" value={directoryProvider} onChange={(_event, value) => setDirectoryProvider(value)}>
               {directoryProviders.map((provider) => (
-                <option key={provider.id} value={provider.id}>
-                  {provider.name} ({provider.provider_type.toUpperCase()})
-                </option>
+                <FormSelectOption key={provider.id} value={provider.id} label={`${provider.name} (${provider.provider_type.toUpperCase()})`} />
               ))}
-            </select>
+            </FormSelect>
           </FormGroup>
           <FormGroup label="Username" fieldId="directory-user">
             <TextInput id="directory-user" value={directoryUser} onChange={(_event, value) => setDirectoryUser(value)} />

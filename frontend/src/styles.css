@@ -82,7 +82,155 @@ a {
   display: flex;
   justify-content: flex-end;
   align-items: center;
+  gap: var(--pf-t--global--spacer--md);
   width: 100%;
+}
+
+.aam-masthead-user {
+  font-weight: var(--pf-t--global--font--weight--body--bold);
+}
+
+.aam-alerts {
+  position: relative;
+}
+
+.aam-alerts__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  margin-left: 0.25rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--pf-t--global--color--status--danger--default);
+  color: var(--pf-t--global--text--color--inverse);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+
+.aam-alerts__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  z-index: 200;
+  width: 22rem;
+  max-width: 80vw;
+  padding: var(--pf-t--global--spacer--md);
+  background: var(--pf-t--global--background--color--primary--default);
+  border: 1px solid var(--pf-t--global--border--color--default);
+  box-shadow: var(--pf-t--global--box-shadow--md);
+}
+
+.aam-alerts__list {
+  list-style: none;
+  margin: var(--pf-t--global--spacer--sm) 0 0;
+  padding: 0;
+}
+
+.aam-alerts__list li + li {
+  margin-top: var(--pf-t--global--spacer--md);
+}
+
+.aam-donut {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pf-t--global--spacer--lg);
+}
+
+.aam-donut svg {
+  width: 9.5rem;
+  height: 9.5rem;
+  flex: 0 0 auto;
+}
+
+.aam-donut__value {
+  fill: var(--pf-t--global--text--color--regular);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.aam-donut__caption {
+  fill: var(--pf-t--global--text--color--subtle);
+  font-size: 8px;
+}
+
+.aam-chart-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--pf-t--global--spacer--xs);
+  min-width: 10rem;
+}
+
+.aam-chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--pf-t--global--spacer--sm);
+}
+
+.aam-chart-legend strong {
+  margin-left: auto;
+}
+
+.aam-chart-legend__swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 2px;
+}
+
+.aam-columns {
+  display: flex;
+  align-items: end;
+  gap: var(--pf-t--global--spacer--sm);
+  min-height: 10rem;
+}
+
+.aam-columns__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 10rem;
+}
+
+.aam-columns__value,
+.aam-columns__label {
+  color: var(--pf-t--global--text--color--subtle);
+  font-size: var(--pf-t--global--font--size--xs);
+}
+
+.aam-columns__track {
+  display: flex;
+  align-items: end;
+  width: 100%;
+  max-width: 2.5rem;
+  flex: 1 1 auto;
+  margin: var(--pf-t--global--spacer--xs) 0;
+}
+
+.aam-columns__bar {
+  width: 100%;
+  background: var(--pf-t--global--color--brand--default);
+  border-radius: var(--pf-t--global--border--radius--small) var(--pf-t--global--border--radius--small) 0 0;
+}
+
+.aam-login .pf-v6-c-login__header,
+.aam-login .pf-v5-c-login__header {
+  display: none;
+}
+
+.aam-login-mark {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--pf-t--global--spacer--md);
+}
+
+.aam-login-mark .aam-ansible-logo {
+  width: 3rem;
+  height: 3rem;
 }
 
 .aam-monitoring-page .pf-v6-l-grid,
@@ -201,6 +349,9 @@ a {
   border-inline-start-color: var(--pf-t--global--color--status--info--default);
 }
 
+.aam-form-section {
+  margin-top: var(--pf-t--global--spacer--lg);
+}
 .aam-form-section__description,
 .aam-form-help {
   color: var(--pf-t--global--text--color--subtle);

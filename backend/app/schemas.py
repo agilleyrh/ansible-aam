@@ -353,6 +353,7 @@ class RemoteActionRequest(BaseModel):
         "sync_project",
         "sync_repository",
         "cancel_job",
+        "cancel_execution",
         "patch_controller_settings",
         "ensure_organization",
         "ensure_execution_environment",
@@ -433,3 +434,20 @@ class RuntimeSettingsResponse(BaseModel):
     search_result_limit: int
     request_timeout_seconds: int
     trusted_headers: dict[str, str]
+
+
+class HealthSampleResponse(BaseModel):
+    environment_id: str
+    environment_name: str
+    status: str
+    health_score: int
+    collected_at: datetime
+
+
+class FleetAlertResponse(BaseModel):
+    id: str
+    environment_id: str
+    environment_name: str
+    severity: str
+    message: str
+    created_at: datetime
