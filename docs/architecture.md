@@ -41,12 +41,14 @@ The hub uses the same open-source building blocks as Ansible Automation Platform
 | HTTP API | FastAPI, Uvicorn on the asyncio/h11 loop | Open-source service API. The portable loop avoids the Apple Silicon CRC OpenSSL probe. |
 | UI | React and PatternFly 6, served by `ubi9/nginx-124` | PatternFly is the Red Hat console toolkit used by OpenShift and AAP. |
 | Database | PostgreSQL 16, `quay.io/sclorg/postgresql-16-c9s` | Same Software Collections image OpenShift samples and AAP use. The client links the UBI `libpq` package rather than a bundled wheel. |
-| Queue | Redis 7, `quay.io/sclorg/redis-7-c9s`, with RQ | Same image family. Redis is the broker; RQ is the worker library. |
+| Queue | Redis 7 and RQ | Redis is the broker. Generic OpenShift uses `quay.io/sclorg/redis-7-c9s`, the same Software Collections image as the RHEL Redis container. |
 | Schema | SQLAlchemy and Alembic | Versioned migrations, applied by the API on startup. |
 | Passwords | Argon2id | Same local-password hash Automation Orchestrator uses. |
 | Directory and SSO | OpenID Connect, LDAP, Active Directory | Same sign-in methods as AAP and Automation Orchestrator. |
 
 RHEL customers can substitute `registry.redhat.io/rhel9/postgresql-16` and `registry.redhat.io/rhel9/redis-7`. Those are the entitled builds of the same sclorg images. Nothing in the hub is proprietary.
+
+On Apple Silicon CRC, the RHEL Redis build exits with a qemu segmentation fault before it accepts connections. The MicroShift overlay therefore runs upstream Redis 7 (`docker.io/library/redis:7-alpine`), which is the same BSD-licensed server, and keeps the `anyuid` binding that image needs. PostgreSQL from sclorg already runs on that guest.
 
 ## Major services
 
