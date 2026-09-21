@@ -6,10 +6,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.auth_routes import router as auth_router
 from app.api.routes import router
 from app.config import get_settings
 from app.database import SessionLocal, init_db
 from app.health import health_response
+from app.services.identity import seed_access_control
 from app.services.policies import seed_default_policies
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -25,6 +27,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         db = SessionLocal()
         try:
             seed_default_policies(db)
+            seed_access_control(db)
         finally:
             db.close()
     except Exception:
@@ -44,6 +47,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router, prefix=settings.api_prefix)
 app.include_router(router, prefix=settings.api_prefix)
 
 

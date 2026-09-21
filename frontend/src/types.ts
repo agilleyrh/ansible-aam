@@ -180,10 +180,62 @@ export type ConfigBaseline = {
 };
 
 export type CurrentUser = {
+  id?: string;
   username: string;
   email?: string | null;
   roles: string[];
   groups: string[];
+  system_roles?: string[];
+  environment_roles?: Record<string, string[]>;
+  visible_environment_ids?: string[] | null;
+  is_builtin?: boolean;
+  auth_source?: string;
+};
+
+export type AuthProvider = {
+  id: string;
+  name: string;
+  provider_type: "oidc" | "ldap" | "ad" | string;
+  enabled: boolean;
+};
+
+export type AccessDirectory = {
+  users: Array<{
+    id: string;
+    username: string;
+    email?: string | null;
+    is_builtin: boolean;
+    is_active: boolean;
+    source: string;
+    groups: string[];
+  }>;
+  groups: Array<{ id: string; name: string; description: string; is_builtin: boolean }>;
+  assignments: Array<{
+    id: string;
+    role: string;
+    scope: string;
+    environment_id: string;
+    principal_type: string;
+    principal_id: string;
+  }>;
+  providers: Array<
+    AuthProvider & {
+      allow_all_authenticated: boolean;
+      config: Record<string, unknown>;
+      has_secret: boolean;
+    }
+  >;
+  system_roles: string[];
+  environment_roles: string[];
+};
+
+export type IdentityProviderWrite = {
+  name: string;
+  provider_type: string;
+  enabled: boolean;
+  allow_all_authenticated: boolean;
+  config: Record<string, unknown>;
+  secret?: string | null;
 };
 
 export type PolicyResult = {

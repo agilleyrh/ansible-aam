@@ -132,7 +132,7 @@ export function PoliciesPage() {
       if (baselineResult.status === "fulfilled") {
         setBaseline(baselineResult.value);
       }
-      if (meResult.status === "fulfilled") {
+      if (meResult.status === "fulfilled" && meResult.value) {
         setCanManage(isAdmin(meResult.value.roles));
       }
     }).finally(() => {

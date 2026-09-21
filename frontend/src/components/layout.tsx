@@ -1,4 +1,5 @@
 import {
+  Button,
   Card,
   CardBody,
   CardHeader,
@@ -19,25 +20,32 @@ import {
   Content,
   Title,
 } from "@patternfly/react-core";
-import { Link as RouterLink, Outlet, useLocation } from "react-router-dom";
+import { Link as RouterLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { AnsibleLogo } from "./ansible-logo";
 import { ColorModeToggle } from "./color-mode-toggle";
-
-const links = [
-  { to: "/", label: "Overview" },
-  { to: "/monitoring", label: "Monitoring" },
-  { to: "/jobs", label: "Jobs" },
-  { to: "/environments", label: "Environments" },
-  { to: "/activity", label: "Activity" },
-  { to: "/policies", label: "Governance" },
-  { to: "/topology", label: "Topology" },
-  { to: "/search", label: "Search" },
-  { to: "/settings", label: "Administration" },
-];
+import { useAuth } from "../auth";
 
 export function AppLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+  const isSystemAdmin = user?.system_roles?.includes("admin") ?? false;
+  const canManageAccess =
+    isSystemAdmin ||
+    Object.values(user?.environment_roles ?? {}).some((roles) => roles.includes("environment-admin"));
+  const links = [
+    { to: "/", label: "Overview" },
+    { to: "/monitoring", label: "Monitoring" },
+    { to: "/jobs", label: "Jobs" },
+    { to: "/environments", label: "Environments" },
+    { to: "/activity", label: "Activity" },
+    { to: "/policies", label: "Governance" },
+    { to: "/topology", label: "Topology" },
+    { to: "/search", label: "Search" },
+    ...(canManageAccess ? [{ to: "/access", label: "Access" }] : []),
+    ...(isSystemAdmin ? [{ to: "/settings", label: "Administration" }] : []),
+  ];
 
   function isActivePath(path: string) {
     return path === "/" ? location.pathname === path : location.pathname === path || location.pathname.startsWith(`${path}/`);
@@ -63,6 +71,15 @@ export function AppLayout() {
       </MastheadMain>
       <MastheadContent>
         <div className="aam-masthead-actions">
+          <span>{user?.username}</span>
+          <Button
+            variant="link"
+            onClick={() => {
+              logout().then(() => navigate("/login"));
+            }}
+          >
+            Log out
+          </Button>
           <ColorModeToggle />
         </div>
       </MastheadContent>

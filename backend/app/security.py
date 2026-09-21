@@ -2,15 +2,27 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import logging
 from collections.abc import Callable
 
 from cryptography.fernet import Fernet
 from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.dependencies import get_db
+from app.models import LocalUser
 from app.schemas import UserContext
+from app.services.access import (
+    AccessProfile,
+    can_administer_environment,
+    can_create_environment,
+    can_manage_platform,
+    can_operate_environment,
+    can_read_environment,
+    load_profile,
+)
+from app.services.passwords import read_session_token
 
 logger = logging.getLogger(__name__)
 
@@ -39,64 +51,105 @@ def _split_csv(value: str | None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-def _parse_identity_header(raw: str | None) -> dict:
-    if not raw:
-        return {}
-    padded = raw + ("=" * ((4 - len(raw) % 4) % 4))
-    try:
-        return json.loads(base64.b64decode(padded).decode("utf-8"))
-    except (ValueError, json.JSONDecodeError):
-        return {}
+SESSION_COOKIE = "aam_session"
 
 
-async def resolve_user(request: Request) -> UserContext:
+def profile_context(profile: AccessProfile) -> UserContext:
+    return UserContext(
+        id=profile.user_id,
+        username=profile.username,
+        email=profile.email,
+        roles=profile.legacy_roles(),
+        groups=profile.groups,
+        system_roles=sorted(profile.system_roles),
+        environment_roles={key: sorted(value) for key, value in profile.environment_roles.items()},
+        visible_environment_ids=profile.visible_environment_ids(),
+        is_builtin=profile.is_builtin,
+        auth_source=profile.auth_source,
+    )
+
+
+def _profile_from_token(db: Session, token: str | None) -> AccessProfile | None:
+    payload = read_session_token(token)
+    if not payload:
+        return None
+    user = db.get(LocalUser, str(payload.get("sub") or ""))
+    if user is None or not user.is_active:
+        return None
+    return load_profile(db, user)
+
+
+async def resolve_user(request: Request, db: Session = Depends(get_db)) -> UserContext:
     settings = get_settings()
+    token = request.cookies.get(SESSION_COOKIE)
+    authorization = request.headers.get("authorization") or ""
+    if authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    profile = _profile_from_token(db, token)
+    if profile is not None:
+        request.state.access_profile = profile
+        return profile_context(profile)
 
-    if not settings.gateway_trusted_proxy:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Gateway trusted proxy is disabled; the API cannot authenticate requests.",
-        )
+    if settings.trust_identity_headers or (settings.environment == "development" and settings.allow_dev_bypass):
+        username_header = request.headers.get(settings.header_username)
+        roles_header = _split_csv(request.headers.get(settings.header_roles))
+        if not username_header and settings.allow_dev_bypass and settings.environment == "development":
+            logger.warning("Dev bypass active: treating unauthenticated request as aam.admin")
+            return UserContext(username="developer", email="developer@example.com", roles=["aam.admin"], system_roles=["admin"])
+        if username_header and settings.trust_identity_headers:
+            system_roles = ["authenticated"]
+            if "aam.admin" in roles_header or "platform-admin" in roles_header:
+                system_roles.append("admin")
+            elif "aam.viewer" in roles_header:
+                system_roles.append("auditor")
+            return UserContext(
+                username=username_header,
+                email=request.headers.get(settings.header_email),
+                roles=roles_header or ["aam.viewer"],
+                groups=_split_csv(request.headers.get(settings.header_groups)),
+                system_roles=system_roles,
+                visible_environment_ids=None if "admin" in system_roles or "auditor" in system_roles else [],
+            )
 
-    username_header = request.headers.get(settings.header_username)
-    email_header = request.headers.get(settings.header_email)
-    roles_header = request.headers.get(settings.header_roles)
-    groups_header = request.headers.get(settings.header_groups)
-    identity_header = request.headers.get(settings.header_identity)
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in to continue.")
 
-    identity = _parse_identity_header(identity_header)
-    identity_user = identity.get("identity", {}).get("user", {})
 
-    username = username_header or identity_user.get("username")
-    email = email_header or identity_user.get("email")
-    roles = _split_csv(roles_header)
-    groups = _split_csv(groups_header)
-
-    if not username and settings.environment == "development" and settings.allow_dev_bypass:
-        logger.warning("Dev bypass active: treating unauthenticated request as aam.admin")
-        return UserContext(username="developer", email="developer@example.com", roles=["aam.admin"])
-
-    if not username:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing trusted identity headers")
-
-    return UserContext(username=username, email=email, roles=roles, groups=groups)
+def current_profile(request: Request) -> AccessProfile | None:
+    return getattr(request.state, "access_profile", None)
 
 
 def require_roles(*expected_roles: str) -> Callable:
-    implied_roles = {
-        "aam.admin": {"aam.admin", "aam.operator", "aam.viewer"},
-        "aam.operator": {"aam.operator", "aam.viewer"},
-        "aam.viewer": {"aam.viewer"},
-        "platform-admin": {"aam.admin", "aam.operator", "aam.viewer"},
-        "controller-admin": {"aam.operator", "aam.viewer"},
-    }
-
-    async def dependency(user: UserContext = Depends(resolve_user)) -> UserContext:
-        effective_roles: set[str] = set()
-        for role in user.roles:
-            effective_roles.update(implied_roles.get(role, {role}))
-        if expected_roles and not effective_roles.intersection(expected_roles):
+    async def dependency(request: Request, user: UserContext = Depends(resolve_user)) -> UserContext:
+        profile = current_profile(request)
+        environment_id = request.path_params.get("environment_id")
+        if profile is None:
+            if "admin" in user.system_roles:
+                return user
+            if "aam.viewer" in expected_roles and "aam.operator" not in expected_roles and "aam.admin" not in expected_roles:
+                return user
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient platform role")
-        return user
+
+        needs_admin = "aam.admin" in expected_roles
+        needs_operate = "aam.operator" in expected_roles
+        needs_read = "aam.viewer" in expected_roles
+        if needs_admin and not needs_operate:
+            if environment_id and can_administer_environment(profile, environment_id):
+                return user
+            if can_manage_platform(profile):
+                return user
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access is required.")
+        if needs_operate:
+            if environment_id:
+                if can_operate_environment(profile, environment_id) or can_administer_environment(profile, environment_id):
+                    return user
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot operate this environment.")
+            if can_create_environment(profile):
+                return user
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot change platform resources.")
+        if needs_read:
+            if environment_id and not can_read_environment(profile, environment_id):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot view this environment.")
+            return user
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient platform role")
 
     return dependency

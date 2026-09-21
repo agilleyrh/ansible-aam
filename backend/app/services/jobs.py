@@ -239,8 +239,11 @@ def _rollup(by_environment: list[EnvironmentJobStats]) -> FleetJobStatsResponse:
     )
 
 
-async def build_fleet_job_stats(db: Session) -> FleetJobStatsResponse:
-    environments = list(db.scalars(select(ManagedEnvironment).order_by(ManagedEnvironment.name)).all())
+async def build_fleet_job_stats(db: Session, environment_ids: list[str] | None = None) -> FleetJobStatsResponse:
+    statement = select(ManagedEnvironment).order_by(ManagedEnvironment.name)
+    if environment_ids is not None:
+        statement = statement.where(ManagedEnvironment.id.in_(environment_ids or [""]))
+    environments = list(db.scalars(statement).all())
     if not environments:
         return FleetJobStatsResponse(environment_count=0)
     by_environment = await asyncio.gather(*[_stats_for_environment(environment) for environment in environments])
@@ -253,8 +256,11 @@ async def build_fleet_jobs(
     status: str | None = None,
     environment_id: str | None = None,
     limit_per_environment: int = 25,
+    environment_ids: list[str] | None = None,
 ) -> FleetJobsResponse:
     query = select(ManagedEnvironment).order_by(ManagedEnvironment.name)
+    if environment_ids is not None:
+        query = query.where(ManagedEnvironment.id.in_(environment_ids or [""]))
     if environment_id:
         query = query.where(ManagedEnvironment.id == environment_id)
     environments = list(db.scalars(query).all())

@@ -31,11 +31,31 @@ Advanced Automation Manager is the fleet hub for Ansible Automation Platform. It
 | RHEL / Podman | `deploy/podman/` (Compose + Quadlet) |
 | OpenShift | `deploy/openshift/` (Kustomize + `deploy.sh` for CRC MicroShift) |
 
+## Platform stack
+
+The hub uses the same open-source building blocks as Ansible Automation Platform and OpenShift, packaged the way those products package them.
+
+| Piece | Choice | Why |
+| --- | --- | --- |
+| API runtime | Python 3.12 on `ubi9/python-312` | UBI, same base family as AAP service images. |
+| HTTP API | FastAPI, Uvicorn on the asyncio/h11 loop | Open-source service API. The portable loop avoids the Apple Silicon CRC OpenSSL probe. |
+| UI | React and PatternFly 6, served by `ubi9/nginx-124` | PatternFly is the Red Hat console toolkit used by OpenShift and AAP. |
+| Database | PostgreSQL 16, `quay.io/sclorg/postgresql-16-c9s` | Same Software Collections image OpenShift samples and AAP use. The client links the UBI `libpq` package rather than a bundled wheel. |
+| Queue | Redis 7 and RQ | Redis is the broker. Generic OpenShift uses `quay.io/sclorg/redis-7-c9s`, the same Software Collections image as the RHEL Redis container. |
+| Schema | SQLAlchemy and Alembic | Versioned migrations, applied by the API on startup. |
+| Passwords | Argon2id | Same local-password hash Automation Orchestrator uses. |
+| Directory and SSO | OpenID Connect, LDAP, Active Directory | Same sign-in methods as AAP and Automation Orchestrator. |
+
+RHEL customers can substitute `registry.redhat.io/rhel9/postgresql-16` and `registry.redhat.io/rhel9/redis-7`. Those are the entitled builds of the same sclorg images. Nothing in the hub is proprietary.
+
+On Apple Silicon CRC, the RHEL Redis build exits with a qemu segmentation fault before it accepts connections. The MicroShift overlay therefore runs upstream Redis 7 (`docker.io/library/redis:7-alpine`), which is the same BSD-licensed server, and keeps the `anyuid` binding that image needs. PostgreSQL from sclorg already runs on that guest.
+
 ## Major services
 
 ### API
 
-- Accepts trusted user identity from platform gateway or Envoy.
+- Authenticates local accounts and optional OpenID Connect, LDAP, and Active Directory providers.
+- Can optionally accept trusted identity headers from a platform gateway or Envoy. That path is off by default.
 - Stores managed-environment inventory, infrastructure metadata, and normalized resource data.
 - Exposes dashboard, environment, jobs, policy, search, topology, and action endpoints.
 
@@ -69,15 +89,19 @@ Advanced Automation Manager is the fleet hub for Ansible Automation Platform. It
 - `policy_results`: latest compliance state per environment and policy.
 - `sync_executions`: queue and execution history for inventory collection.
 - `action_audits`: record of operator actions proxied from AAM into remote environments.
+- `local_users`, `access_groups`, `group_memberships`: accounts and the groups that carry roles.
+- `identity_providers`: OpenID Connect, LDAP, and Active Directory configuration. Secrets are encrypted with `AAM_SECRET_KEY`.
+- `role_assignments`: system roles and per-environment roles for a user or a group. System scope stores an empty `environment_id`.
 
 ## RBAC model
 
-- Production mode expects AAP platform gateway or a trusted Envoy layer to forward user identity and roles.
-- AAM maps gateway-oriented roles into three app roles:
-  - `aam.admin`
-  - `aam.operator`
-  - `aam.viewer`
-- The app can be hosted behind the existing platform gateway or behind a dedicated gateway instance that shares the same identity source.
+Authorization follows Automation Orchestrator. Usage and provider configuration are in [authentication.md](authentication.md).
+
+- System roles apply to the hub: `admin`, `auditor`, `user`, `authenticated`.
+- Environment roles delegate the same idea onto one estate: `environment-admin`, `environment-user`, `environment-auditor`.
+- Built-in groups `admins`, `auditors`, `users`, and `authenticated` hold the matching system role.
+- Sessions are HMAC-signed cookies. Optional `x-rh-*` headers are accepted only when `AAM_TRUST_IDENTITY_HEADERS` is true.
+- Older route checks still see implied `aam.admin`, `aam.operator`, and `aam.viewer` values derived from these roles.
 
 ## Integration model
 

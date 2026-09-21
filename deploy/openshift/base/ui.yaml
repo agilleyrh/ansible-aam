@@ -22,10 +22,6 @@ spec:
           env:
             - name: AAM_API_UPSTREAM
               value: http://aam-api:8000
-            - name: AAM_DEFAULT_USER
-              value: developer
-            - name: AAM_DEFAULT_ROLES
-              value: aam.admin
           ports:
             - name: http
               containerPort: 8080

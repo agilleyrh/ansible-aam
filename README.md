@@ -25,10 +25,10 @@ AAM lets you:
 
 ## Current stack
 
-- `backend/`: FastAPI API, SQLAlchemy models, Alembic migrations, queue worker, scheduler, policy engine, and AAP connectors.
-- `frontend/`: React 18 + Vite + **PatternFly React 6** console.
-- `deploy/docker-compose.yml`: local/lab Docker Compose stack.
-- `deploy/podman/`: Podman Compose + Quadlet units for RHEL.
+- `backend/`: FastAPI API on UBI Python, SQLAlchemy, Alembic, RQ worker, scheduler, and AAP connectors. PostgreSQL uses the system `libpq`.
+- `frontend/`: React 18 + Vite + **PatternFly React 6**, served by the UBI nginx 1.24 image.
+- `deploy/docker-compose.yml`: local/lab stack using the sclorg PostgreSQL 16 and Redis 7 images.
+- `deploy/podman/`: Podman Compose + Quadlet units for RHEL, with the same database images.
 - `deploy/openshift/`: **installable** OpenShift / MicroShift Kustomize manifests and a laptop deploy script.
 - `deploy/operator/`: optional future Operator SDK scaffold. It does not install the hub by itself.
 - `docs/architecture.md`: product and integration design.
@@ -60,6 +60,8 @@ More detail is in [docs/architecture.md](docs/architecture.md).
 The backend exposes endpoints for:
 
 - health checks (`GET /api/v1/healthz`)
+- local, OpenID Connect, LDAP, and Active Directory sign-in
+- users, groups, role assignments, and identity providers
 - dashboard and monitoring summaries
 - environment CRUD (including `deployment_type` and `infrastructure`)
 - environment sync and topology
@@ -122,7 +124,7 @@ curl -k https://aam.apps.crc.testing/api/v1/healthz
 - API docs: `https://aam.apps.crc.testing/docs`
 - Health: `{"status":"ok","database":"ok","redis":"ok"}`
 
-Lab UI nginx injects `X-RH-User` / `X-RH-Roles` so you can use the console without putting AAP gateway in front of AAM.
+Sign in as `admin` / `ChangeMe-Admin1!`. That is the lab system administrator. Change the password from **Access** after the first login. Header injection is not used. See [docs/authentication.md](docs/authentication.md).
 
 **Register an AAP environment**
 
@@ -161,7 +163,7 @@ oc delete -k deploy/openshift/overlays/microshift
 oc apply -k deploy/openshift/base
 ```
 
-The base Route has no host so OpenShift can assign one. Postgres and Redis ServiceAccounts are bound to `anyuid` SCC.
+The base Route has no host so OpenShift can assign one. Postgres uses the sclorg image and its ServiceAccount is bound to the `anyuid` SCC. Redis uses the matching sclorg image and runs under the restricted SCC.
 
 ### 3. Docker Compose or Podman
 
@@ -213,7 +215,12 @@ Important settings:
 - `AAM_SECRET_KEY`
 - `AAM_CORS_ORIGINS`
 - `AAM_GATEWAY_TRUSTED_PROXY`
-- `AAM_ALLOW_DEV_BYPASS`
+- `AAM_ALLOW_DEV_BYPASS` (development only; leave false)
+- `AAM_TRUST_IDENTITY_HEADERS` (leave false unless a trusted proxy sets identity)
+- `AAM_LOCAL_LOGIN_ENABLED`
+- `AAM_BOOTSTRAP_ADMIN_USERNAME` and `AAM_BOOTSTRAP_ADMIN_PASSWORD`
+- `AAM_PUBLIC_URL` (required for OpenID Connect redirects)
+- `AAM_SESSION_TTL_MINUTES`
 - `AAM_AUTO_MIGRATE`
 - `AAM_DEFAULT_SYNC_INTERVAL_MINUTES`
 - `AAM_SYNC_JOB_TIMEOUT_MINUTES`
@@ -264,19 +271,26 @@ npm run dev
 ## First-run usage flow
 
 1. Open the UI (`https://aam.apps.crc.testing` on CRC, or `http://127.0.0.1:8080` on Compose).
-2. Go to **Environments** and register an AAP environment (gateway URL, credentials, infrastructure type).
-3. Queue a sync. Gateway, controller, EDA, and hub should appear under monitoring; Hub 503 usually means the remote Automation Hub PVC/pods are unhealthy, not AAM.
-4. Review **Dashboard**, **Jobs**, **Topology**, and **Policies**.
-5. Open an environment detail page for inventory actions and settings.
+2. Sign in. The CRC lab account is `admin` / `ChangeMe-Admin1!`.
+3. Open **Access** to change that password, add users, or register an OpenID Connect, LDAP, or Active Directory provider.
+4. Go to **Environments** and register an AAP environment (gateway URL, credentials, infrastructure type). The creator becomes environment administrator for that estate.
+5. Queue a sync. Gateway, controller, EDA, and hub should appear under monitoring; Hub 503 usually means the remote Automation Hub PVC/pods are unhealthy, not AAM.
+6. Review **Dashboard**, **Jobs**, **Topology**, and **Policies**.
+7. Open an environment detail page for inventory actions and settings.
 
 ## Platform access and RBAC
 
-- Production deployments sit behind the AAP gateway or an equivalent trusted proxy.
-- Roles: `aam.admin`, `aam.operator`, `aam.viewer`.
+Sign-in and authorization follow the Automation Orchestrator model. Full setup steps are in [docs/authentication.md](docs/authentication.md).
+
+- Local username and password, plus optional OpenID Connect, LDAP, and Active Directory.
+- System roles: `admin` (platform administrator), `auditor`, `user`, and `authenticated`.
+- Environment roles: `environment-admin`, `environment-user`, and `environment-auditor` on one registered estate.
+- The system administrator manages users, providers, and the whole fleet. Creating an environment delegates `environment-admin` to its creator.
+- Trusted `x-rh-*` headers are optional and off by default.
 
 ## Current limitations
 
-- Trusted-header authentication only (no standalone login UI). Lab installs inject identity headers at the UI proxy.
+- OpenID Connect trusts the token endpoint and userinfo response over TLS. It does not yet check the ID token against the provider JWKS.
 - Compose/Podman configs target lab usage; harden secrets and TLS for production.
 - OpenShift Operator scaffold provides CRD/RBAC/manager manifests; use `deploy/openshift` to install the hub. Full Operator SDK reconciler packaging remains a later step.
 - Cloud/OpenShift/Podman are first-class **registration and labeling** dimensions today; deeper cloud-account or cluster-API integrations can be layered on next.
@@ -287,6 +301,7 @@ npm run dev
 ## Related documents
 
 - [docs/architecture.md](docs/architecture.md)
+- [docs/authentication.md](docs/authentication.md)
 - [deploy/podman/README.md](deploy/podman/README.md)
 - [deploy/openshift/README.md](deploy/openshift/README.md)
 - [backend/README.md](backend/README.md)

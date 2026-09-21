@@ -17,9 +17,8 @@ spec:
       serviceAccountName: aam-redis
       containers:
         - name: redis
-          image: docker.io/library/redis:7-alpine
+          image: quay.io/sclorg/redis-7-c9s:latest
           imagePullPolicy: IfNotPresent
-          command: ["redis-server", "--save", "", "--appendonly", "no", "--protected-mode", "no"]
           ports:
             - name: redis
               containerPort: 6379

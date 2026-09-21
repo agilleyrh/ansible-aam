@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - ../../base
+  - redis-anyuid.yaml
 
 images:
   - name: aam-api
@@ -48,3 +49,20 @@ patches:
       - op: add
         path: /spec/host
         value: aam.apps.crc.testing
+  - target:
+      kind: Deployment
+      name: aam-redis
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: docker.io/library/redis:7-alpine
+      - op: add
+        path: /spec/template/spec/containers/0/command
+        value:
+          - redis-server
+          - --save
+          - ""
+          - --appendonly
+          - "no"
+          - --protected-mode
+          - "no"

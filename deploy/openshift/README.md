@@ -12,7 +12,7 @@ Namespace `aam` with:
 - Redis (ephemeral job queue)
 - `aam-api`, `aam-worker`, `aam-scheduler`
 - `aam-ui` (nginx) with an OpenShift Route
-- Lab identity headers so the UI works without an AAP gateway in front of AAM
+- Local sign-in for a built-in system administrator (`admin` on the lab). Identity providers are added in the UI. See [docs/authentication.md](../../docs/authentication.md).
 
 ## Laptop MicroShift (OpenShift Local)
 
@@ -78,7 +78,7 @@ Expect every deployment Ready and health `{"status":"ok","database":"ok","redis"
 oc apply -k deploy/openshift/base
 ```
 
-Replace the default `secret-key` in Secret `aam` before any non-lab use. The UI Route host is omitted in the base so OpenShift can assign one. Postgres and Redis need the `anyuid` SCC bindings in `base/scc-binding.yaml`.
+Replace the default `secret-key` in Secret `aam` before any non-lab use. The UI Route host is omitted in the base so OpenShift can assign one. Postgres needs the `anyuid` SCC binding in `base/scc-binding.yaml`. Redis does not.
 
 ## Troubleshooting
 
@@ -87,8 +87,8 @@ Replace the default `secret-key` in Secret `aam` before any non-lab use. The UI 
 | API/worker exit 132 (SIGILL) on Apple Silicon CRC | Keep `OPENSSL_armcap=0` (image + ConfigMap). The guest advertises SVE2 that cryptography's OpenSSL would probe. |
 | Alembic `source code string cannot contain null bytes` | Rebuild with `./deploy/openshift/deploy.sh` (sets `COPYFILE_DISABLE=1` so macOS tar does not ship `._*` files). |
 | Sync error `Name or service not known` for `*.apps.crc.testing` | Re-run `deploy.sh` so host aliases are injected, or register `http://aap.aap-operator.svc`. |
-| Redis CrashLoop `setpriv: setresuid failed` | The Redis Deployment must run `redis-server` as `command` (already in `base/redis.yaml`). |
-| UI 401 | Lab overlay injects identity headers. Confirm UI env `AAM_DEFAULT_USER` / `AAM_DEFAULT_ROLES`. |
+| Redis CrashLoop on Apple Silicon CRC | The MicroShift overlay must keep upstream Redis 7. `quay.io/sclorg/redis-7-c9s` segfaults under this guest's qemu. |
+| UI asks you to sign in | Use the built-in administrator from Secret `aam` key `bootstrap-admin-password` (lab default user `admin`). Header injection is no longer the lab identity. |
 | No cluster image registry | Expected on CRC MicroShift. Build inside the VM (the script does this). |
 
 ## Uninstall

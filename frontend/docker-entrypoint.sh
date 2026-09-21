@@ -2,13 +2,10 @@
 set -eu
 
 : "${AAM_API_UPSTREAM:=http://aam-api:8000}"
-: "${AAM_DEFAULT_USER:=}"
-: "${AAM_DEFAULT_ROLES:=}"
 
-export AAM_API_UPSTREAM AAM_DEFAULT_USER AAM_DEFAULT_ROLES
+mkdir -p /tmp/client_body /tmp/proxy /tmp/fastcgi /tmp/uwsgi /tmp/scgi /opt/app-root/etc
+sed "s|__AAM_API_UPSTREAM__|${AAM_API_UPSTREAM}|g" \
+  /opt/app-root/etc/nginx.conf.template \
+  > /opt/app-root/etc/nginx.conf
 
-envsubst '${AAM_API_UPSTREAM} ${AAM_DEFAULT_USER} ${AAM_DEFAULT_ROLES}' \
-  < /etc/nginx/templates/default.conf.template \
-  > /etc/nginx/conf.d/default.conf
-
-exec nginx -g "daemon off;"
+exec nginx -c /opt/app-root/etc/nginx.conf -g "daemon off;"
