@@ -73,8 +73,6 @@ services:
       context: ../frontend
     environment:
       AAM_API_UPSTREAM: http://aam-api:8000
-      AAM_DEFAULT_USER: developer
-      AAM_DEFAULT_ROLES: aam.admin
     depends_on:
       - aam-api
     ports:

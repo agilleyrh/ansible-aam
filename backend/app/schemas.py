@@ -7,10 +7,17 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class UserContext(BaseModel):
+    id: str = ""
     username: str
     email: str | None = None
     roles: list[str] = Field(default_factory=list)
     groups: list[str] = Field(default_factory=list)
+    system_roles: list[str] = Field(default_factory=list)
+    environment_roles: dict[str, list[str]] = Field(default_factory=dict)
+    # None means every environment. An empty list means none.
+    visible_environment_ids: list[str] | None = None
+    is_builtin: bool = False
+    auth_source: str = "local"
 
 
 DeploymentType = Literal["podman", "openshift", "aws", "gcp", "azure", "other"]

@@ -10,7 +10,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.dependencies import get_db
-from app.models import ActionAudit, ManagedEnvironment, ManagedResource, PolicyDefinition, PolicyResult, SyncExecution
+from app.models import ActionAudit, ManagedEnvironment, ManagedResource, PolicyDefinition, PolicyResult, RoleAssignment, SyncExecution
 from app.schemas import (
     ActivityEventResponse,
     DashboardResponse,
@@ -84,6 +84,22 @@ def _normalize_environment_product_fields(environment: ManagedEnvironment) -> No
     environment.encrypted_orchestrator_token = None
 
 
+def _visible_clause(user: UserContext):
+    ids = user.visible_environment_ids
+    if ids is None:
+        return None
+    if not ids:
+        return ManagedEnvironment.id == ""
+    return ManagedEnvironment.id.in_(ids)
+
+
+def _limit_visible(statement, user: UserContext):
+    clause = _visible_clause(user)
+    if clause is None:
+        return statement
+    return statement.where(clause)
+
+
 @router.get("/me", response_model=UserContext)
 async def current_user(user: UserContext = Depends(resolve_user)) -> UserContext:
     return user
@@ -97,17 +113,17 @@ def healthcheck() -> JSONResponse:
 @router.get("/dashboard", response_model=DashboardResponse)
 def dashboard(
     db: Session = Depends(get_db),
-    _: UserContext = Depends(require_roles("aam.viewer")),
+    user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> DashboardResponse:
-    return build_dashboard(db)
+    return build_dashboard(db, user.visible_environment_ids)
 
 
 @router.get("/monitoring", response_model=MonitoringResponse)
 def monitoring(
     db: Session = Depends(get_db),
-    _: UserContext = Depends(require_roles("aam.viewer")),
+    user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> MonitoringResponse:
-    return build_monitoring(db)
+    return build_monitoring(db, user.visible_environment_ids)
 
 
 @router.get("/jobs", response_model=FleetJobsResponse)
@@ -116,39 +132,40 @@ async def list_jobs(
     environment_id: str | None = Query(default=None),
     limit_per_environment: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
-    _: UserContext = Depends(require_roles("aam.viewer")),
+    user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> FleetJobsResponse:
     return await build_fleet_jobs(
         db,
         status=status,
         environment_id=environment_id,
         limit_per_environment=limit_per_environment,
+        environment_ids=user.visible_environment_ids,
     )
 
 
 @router.get("/jobs/stats", response_model=FleetJobStatsResponse)
 async def job_stats(
     db: Session = Depends(get_db),
-    _: UserContext = Depends(require_roles("aam.viewer")),
+    user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> FleetJobStatsResponse:
-    return await build_fleet_job_stats(db)
+    return await build_fleet_job_stats(db, user.visible_environment_ids)
 
 
 @router.get("/environments", response_model=list[EnvironmentSummary])
 def list_environments(
     db: Session = Depends(get_db),
-    _: UserContext = Depends(require_roles("aam.viewer")),
+    user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> list[EnvironmentSummary]:
-    environments = db.scalars(select(ManagedEnvironment).order_by(ManagedEnvironment.name)).all()
+    environments = db.scalars(_limit_visible(select(ManagedEnvironment).order_by(ManagedEnvironment.name), user)).all()
     return [EnvironmentSummary.model_validate(environment) for environment in environments]
 
 
 @router.get("/groups", response_model=list[EnvironmentGroupResponse])
 def list_environment_groups(
     db: Session = Depends(get_db),
-    _: UserContext = Depends(require_roles("aam.viewer")),
+    user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> list[EnvironmentGroupResponse]:
-    environments = db.scalars(select(ManagedEnvironment).order_by(ManagedEnvironment.name)).all()
+    environments = db.scalars(_limit_visible(select(ManagedEnvironment).order_by(ManagedEnvironment.name), user)).all()
     grouped: dict[str, list[ManagedEnvironment]] = {}
     for environment in environments:
         names = [item for item in (environment.groupings or []) if item]
@@ -218,6 +235,17 @@ def create_environment(
     )
     _normalize_environment_product_fields(environment)
     db.add(environment)
+    db.flush()
+    if user.id:
+        db.add(
+            RoleAssignment(
+                role="environment-admin",
+                scope="environment",
+                environment_id=environment.id,
+                principal_type="user",
+                principal_id=user.id,
+            )
+        )
     db.commit()
     db.refresh(environment)
     return EnvironmentSummary.model_validate(environment)
@@ -301,6 +329,8 @@ def delete_environment(
     environment = db.get(ManagedEnvironment, environment_id)
     if environment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Environment not found")
+    for assignment in db.scalars(select(RoleAssignment).where(RoleAssignment.environment_id == environment_id)).all():
+        db.delete(assignment)
     db.delete(environment)
     db.commit()
 
@@ -324,12 +354,13 @@ def sync_environment(
 @router.get("/topology", response_model=TopologyResponse)
 def fleet_topology(
     db: Session = Depends(get_db),
-    _: UserContext = Depends(require_roles("aam.viewer")),
+    user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> TopologyResponse:
     environments = db.scalars(
-        select(ManagedEnvironment)
-        .options(selectinload(ManagedEnvironment.snapshots))
-        .order_by(ManagedEnvironment.name)
+        _limit_visible(
+            select(ManagedEnvironment).options(selectinload(ManagedEnvironment.snapshots)).order_by(ManagedEnvironment.name),
+            user,
+        )
     ).all()
 
     hub_id = "aam-hub"
@@ -608,9 +639,9 @@ async def remediate_policy(
 @router.get("/config-baseline", response_model=ConfigBaselineResponse)
 def config_baseline(
     db: Session = Depends(get_db),
-    _: UserContext = Depends(require_roles("aam.viewer")),
+    user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> ConfigBaselineResponse:
-    environments = db.scalars(select(ManagedEnvironment).order_by(ManagedEnvironment.name)).all()
+    environments = db.scalars(_limit_visible(select(ManagedEnvironment).order_by(ManagedEnvironment.name), user)).all()
     return build_config_baseline(list(environments))
 
 
@@ -618,12 +649,13 @@ def config_baseline(
 def list_policy_results(
     environment_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    _: UserContext = Depends(require_roles("aam.viewer")),
+    user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> list[PolicyResultResponse]:
-    statement = (
+    statement = _limit_visible(
         select(PolicyResult, ManagedEnvironment)
         .join(ManagedEnvironment, ManagedEnvironment.id == PolicyResult.environment_id)
-        .order_by(PolicyResult.evaluated_at.desc())
+        .order_by(PolicyResult.evaluated_at.desc()),
+        user,
     )
     if environment_id:
         statement = statement.where(PolicyResult.environment_id == environment_id)
@@ -638,17 +670,21 @@ def list_policy_results(
 def search_resources(
     q: str = Query(min_length=2),
     db: Session = Depends(get_db),
-    _: UserContext = Depends(require_roles("aam.viewer")),
+    user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> list[SearchResult]:
-    return run_search(db, q)
+    return run_search(db, q, user.visible_environment_ids)
 
 
 @router.get("/sync-executions", response_model=list[SyncExecutionResponse])
 def list_sync_executions(
     db: Session = Depends(get_db),
-    _: UserContext = Depends(require_roles("aam.viewer")),
+    user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> list[SyncExecutionResponse]:
-    rows = db.scalars(select(SyncExecution).order_by(SyncExecution.created_at.desc()).limit(50)).all()
+    statement = select(SyncExecution).order_by(SyncExecution.created_at.desc()).limit(50)
+    ids = user.visible_environment_ids
+    if ids is not None:
+        statement = statement.where(SyncExecution.environment_id.in_(ids or [""]))
+    rows = db.scalars(statement).all()
     return [
         SyncExecutionResponse(
             id=row.id,
@@ -709,23 +745,26 @@ def list_activity(
     environment_id: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
-    _: UserContext = Depends(require_roles("aam.viewer")),
+    user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> list[ActivityEventResponse]:
-    sync_statement = (
+    sync_statement = _limit_visible(
         select(SyncExecution, ManagedEnvironment)
         .join(ManagedEnvironment, ManagedEnvironment.id == SyncExecution.environment_id)
-        .order_by(SyncExecution.created_at.desc())
+        .order_by(SyncExecution.created_at.desc()),
+        user,
     )
-    action_statement = (
+    action_statement = _limit_visible(
         select(ActionAudit, ManagedEnvironment)
         .join(ManagedEnvironment, ManagedEnvironment.id == ActionAudit.environment_id)
-        .order_by(ActionAudit.created_at.desc())
+        .order_by(ActionAudit.created_at.desc()),
+        user,
     )
-    execution_statement = (
+    execution_statement = _limit_visible(
         select(ManagedResource, ManagedEnvironment)
         .join(ManagedEnvironment, ManagedEnvironment.id == ManagedResource.environment_id)
         .where(ManagedResource.service == "orchestrator", ManagedResource.resource_type == "execution")
-        .order_by(ManagedResource.last_seen_at.desc())
+        .order_by(ManagedResource.last_seen_at.desc()),
+        user,
     )
 
     if environment_id:
@@ -835,6 +874,10 @@ async def execute_action(
     environment = db.get(ManagedEnvironment, payload.environment_id)
     if environment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Environment not found")
+    if "admin" not in user.system_roles:
+        granted = set(user.environment_roles.get(payload.environment_id, []))
+        if not granted.intersection({"environment-admin", "environment-user"}):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot operate this environment.")
 
     connector = AAPConnector(environment)
     try:

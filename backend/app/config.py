@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["http://localhost:5173"])
     gateway_trusted_proxy: bool = True
     allow_dev_bypass: bool = False
+    trust_identity_headers: bool = False
+    bootstrap_admin_username: str = "admin"
+    bootstrap_admin_password: str = ""
+    public_url: str = ""
+    session_ttl_minutes: int = 480
+    local_login_enabled: bool = True
     auto_migrate: bool = True
     default_sync_interval_minutes: int = 5
     sync_job_timeout_minutes: int = 15

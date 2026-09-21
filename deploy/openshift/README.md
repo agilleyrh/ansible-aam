@@ -12,7 +12,7 @@ Namespace `aam` with:
 - Redis (ephemeral job queue)
 - `aam-api`, `aam-worker`, `aam-scheduler`
 - `aam-ui` (nginx) with an OpenShift Route
-- Lab identity headers so the UI works without an AAP gateway in front of AAM
+- Local sign-in for a built-in system administrator (`admin` on the lab). Identity providers are added in the UI. See [docs/authentication.md](../../docs/authentication.md).
 
 ## Laptop MicroShift (OpenShift Local)
 
@@ -88,7 +88,7 @@ Replace the default `secret-key` in Secret `aam` before any non-lab use. The UI 
 | Alembic `source code string cannot contain null bytes` | Rebuild with `./deploy/openshift/deploy.sh` (sets `COPYFILE_DISABLE=1` so macOS tar does not ship `._*` files). |
 | Sync error `Name or service not known` for `*.apps.crc.testing` | Re-run `deploy.sh` so host aliases are injected, or register `http://aap.aap-operator.svc`. |
 | Redis CrashLoop `setpriv: setresuid failed` | The Redis Deployment must run `redis-server` as `command` (already in `base/redis.yaml`). |
-| UI 401 | Lab overlay injects identity headers. Confirm UI env `AAM_DEFAULT_USER` / `AAM_DEFAULT_ROLES`. |
+| UI asks you to sign in | Use the built-in administrator from Secret `aam` key `bootstrap-admin-password` (lab default user `admin`). Header injection is no longer the lab identity. |
 | No cluster image registry | Expected on CRC MicroShift. Build inside the VM (the script does this). |
 
 ## Uninstall

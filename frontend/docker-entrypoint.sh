@@ -2,12 +2,10 @@
 set -eu
 
 : "${AAM_API_UPSTREAM:=http://aam-api:8000}"
-: "${AAM_DEFAULT_USER:=}"
-: "${AAM_DEFAULT_ROLES:=}"
 
-export AAM_API_UPSTREAM AAM_DEFAULT_USER AAM_DEFAULT_ROLES
+export AAM_API_UPSTREAM
 
-envsubst '${AAM_API_UPSTREAM} ${AAM_DEFAULT_USER} ${AAM_DEFAULT_ROLES}' \
+envsubst '${AAM_API_UPSTREAM}' \
   < /etc/nginx/templates/default.conf.template \
   > /etc/nginx/conf.d/default.conf
 

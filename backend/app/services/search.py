@@ -26,7 +26,7 @@ def _search_terms(query: str) -> list[str]:
     return terms
 
 
-def run_search(db: Session, query: str) -> list[SearchResult]:
+def run_search(db: Session, query: str, environment_ids: list[str] | None = None) -> list[SearchResult]:
     settings = get_settings()
     filters = []
     for term in _search_terms(query):
@@ -40,13 +40,16 @@ def run_search(db: Session, query: str) -> list[SearchResult]:
                 ManagedEnvironment.name.ilike(f"%{escaped}%", escape="\\"),
             ]
         )
-    results = db.execute(
+    statement = (
         select(ManagedResource, ManagedEnvironment)
         .join(ManagedEnvironment, ManagedEnvironment.id == ManagedResource.environment_id)
         .where(or_(*filters))
         .order_by(ManagedEnvironment.name, ManagedResource.service, ManagedResource.name)
         .limit(settings.search_result_limit)
-    ).all()
+    )
+    if environment_ids is not None:
+        statement = statement.where(ManagedEnvironment.id.in_(environment_ids or [""]))
+    results = db.execute(statement).all()
 
     return [
         SearchResult(

@@ -7,9 +7,13 @@ data:
   AAM_ENVIRONMENT: development
   AAM_API_PREFIX: /api/v1
   AAM_REDIS_URL: redis://aam-redis:6379/0
-  AAM_CORS_ORIGINS: "*"
+  AAM_CORS_ORIGINS: "https://aam.apps.crc.testing,http://localhost:5173"
   AAM_GATEWAY_TRUSTED_PROXY: "true"
-  AAM_ALLOW_DEV_BYPASS: "true"
+  AAM_ALLOW_DEV_BYPASS: "false"
+  AAM_TRUST_IDENTITY_HEADERS: "false"
+  AAM_LOCAL_LOGIN_ENABLED: "true"
+  AAM_BOOTSTRAP_ADMIN_USERNAME: admin
+  AAM_PUBLIC_URL: https://aam.apps.crc.testing
   AAM_AUTO_MIGRATE: "true"
   AAM_DEFAULT_SYNC_INTERVAL_MINUTES: "5"
   AAM_SYNC_JOB_TIMEOUT_MINUTES: "15"

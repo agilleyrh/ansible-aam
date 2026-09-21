@@ -33,6 +33,11 @@ spec:
                 secretKeyRef:
                   name: aam
                   key: secret-key
+            - name: AAM_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aam
+                  key: bootstrap-admin-password
           ports:
             - name: http
               containerPort: 8000

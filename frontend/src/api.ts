@@ -22,6 +22,9 @@ import type {
   SyncExecution,
   SyncRequestResponse,
   TopologyResponse,
+  AuthProvider,
+  AccessDirectory,
+  IdentityProviderWrite,
 } from "./types";
 
 const API_PREFIX = import.meta.env.VITE_API_PREFIX ?? "/api/v1";
@@ -30,6 +33,7 @@ type RequestOptions = {
   method?: string;
   body?: unknown;
   signal?: AbortSignal;
+  allowUnauthorized?: boolean;
 };
 
 function isAbortError(err: unknown): boolean {
@@ -44,11 +48,6 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     Accept: "application/json",
   };
 
-  if (import.meta.env.DEV || import.meta.env.VITE_LOCAL_TRUSTED_HEADERS === "true") {
-    headers["X-RH-User"] = "developer";
-    headers["X-RH-Roles"] = "aam.admin";
-  }
-
   if (options.body !== undefined) {
     headers["Content-Type"] = "application/json";
   }
@@ -58,6 +57,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     response = await fetch(`${API_PREFIX}${path}`, {
       method: options.method ?? "GET",
       headers,
+      credentials: "include",
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: options.signal,
     });
@@ -68,6 +68,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     throw new Error(
       "The browser could not reach the AAM API. If a content blocker is enabled, allow this site, then retry.",
     );
+  }
+
+  if (response.status === 401 && options.allowUnauthorized) {
+    return null as T;
   }
 
   if (!response.ok) {
@@ -118,7 +122,33 @@ export const api = {
   remediatePolicy: (id: string) => request<PolicyRemediateResult>(`/policies/${id}/remediate`, { method: "POST" }),
   policyResults: (signal?: AbortSignal) => request<PolicyResult[]>("/policy-results", { signal }),
   configBaseline: (signal?: AbortSignal) => request<ConfigBaseline>("/config-baseline", { signal }),
-  me: (signal?: AbortSignal) => request<CurrentUser>("/me", { signal }),
+  me: (signal?: AbortSignal) => request<CurrentUser | null>("/me", { signal, allowUnauthorized: true }),
+  authProviders: (signal?: AbortSignal) =>
+    request<{ local_login_enabled: boolean; providers: AuthProvider[] }>("/auth/providers", { signal }),
+  login: (username: string, password: string) =>
+    request<CurrentUser>("/auth/login", { method: "POST", body: { username, password } }),
+  externalLogin: (providerId: string, username: string, password: string) =>
+    request<CurrentUser>("/auth/external", {
+      method: "POST",
+      body: { provider_id: providerId, username, password },
+    }),
+  logout: () => request<{ status: string }>("/auth/logout", { method: "POST" }),
+  accessDirectory: (signal?: AbortSignal) => request<AccessDirectory>("/access/directory", { signal }),
+  createAccessUser: (payload: { username: string; email?: string; password: string; groups: string[] }) =>
+    request<{ id: string; username: string }>("/access/users", { method: "POST", body: payload }),
+  createAssignment: (payload: {
+    role: string;
+    scope: string;
+    environment_id: string;
+    principal_type: string;
+    principal_id: string;
+  }) => request<{ id: string }>("/access/assignments", { method: "POST", body: payload }),
+  deleteAssignment: (id: string) => request<void>(`/access/assignments/${id}`, { method: "DELETE" }),
+  createIdentityProvider: (payload: IdentityProviderWrite) =>
+    request<{ id: string }>("/access/identity-providers", { method: "POST", body: payload }),
+  updateIdentityProvider: (id: string, payload: IdentityProviderWrite) =>
+    request<{ id: string }>(`/access/identity-providers/${id}`, { method: "PATCH", body: payload }),
+  deleteIdentityProvider: (id: string) => request<void>(`/access/identity-providers/${id}`, { method: "DELETE" }),
   search: (q: string, signal?: AbortSignal) => request<SearchResult[]>(`/search?q=${encodeURIComponent(q)}`, { signal }),
   syncExecutions: (signal?: AbortSignal) => request<SyncExecution[]>("/sync-executions", { signal }),
   activity: (environmentId?: string, signal?: AbortSignal) =>

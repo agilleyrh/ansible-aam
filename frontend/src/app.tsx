@@ -2,14 +2,17 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 import { ExclamationCircleIcon } from "@patternfly/react-icons";
 
+import { AuthProvider, RequireAuth } from "./auth";
 import { AppLayout } from "./components/layout";
 import { EmptyState } from "./components/empty-state";
 import { LinkButton } from "./components/link-button";
+import { AccessPage } from "./pages/access";
 import { ActivityPage } from "./pages/activity";
 import { DashboardPage } from "./pages/dashboard";
 import { EnvironmentDetailPage } from "./pages/environment-detail";
 import { EnvironmentsPage } from "./pages/environments";
 import { JobsPage } from "./pages/jobs";
+import { SignInPage } from "./pages/login";
 import { MonitoringPage } from "./pages/monitoring";
 import { PoliciesPage } from "./pages/policies";
 import { SearchPage } from "./pages/search";
@@ -34,21 +37,27 @@ function NotFoundPage() {
 export function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/monitoring" element={<MonitoringPage />} />
-          <Route path="/jobs" element={<JobsPage />} />
-          <Route path="/environments" element={<EnvironmentsPage />} />
-          <Route path="/environments/:environmentId" element={<EnvironmentDetailPage />} />
-          <Route path="/activity" element={<ActivityPage />} />
-          <Route path="/policies" element={<PoliciesPage />} />
-          <Route path="/topology" element={<TopologyPage />} />
-          <Route path="/search" element={<SearchPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Route>
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<SignInPage />} />
+          <Route element={<RequireAuth />}>
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/monitoring" element={<MonitoringPage />} />
+              <Route path="/jobs" element={<JobsPage />} />
+              <Route path="/environments" element={<EnvironmentsPage />} />
+              <Route path="/environments/:environmentId" element={<EnvironmentDetailPage />} />
+              <Route path="/activity" element={<ActivityPage />} />
+              <Route path="/policies" element={<PoliciesPage />} />
+              <Route path="/topology" element={<TopologyPage />} />
+              <Route path="/search" element={<SearchPage />} />
+              <Route path="/access" element={<AccessPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="*" element={<NotFoundPage />} />
+            </Route>
+          </Route>
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

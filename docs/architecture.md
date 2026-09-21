@@ -35,7 +35,8 @@ Advanced Automation Manager is the fleet hub for Ansible Automation Platform. It
 
 ### API
 
-- Accepts trusted user identity from platform gateway or Envoy.
+- Authenticates local accounts and optional OpenID Connect, LDAP, and Active Directory providers.
+- Can optionally accept trusted identity headers from a platform gateway or Envoy. That path is off by default.
 - Stores managed-environment inventory, infrastructure metadata, and normalized resource data.
 - Exposes dashboard, environment, jobs, policy, search, topology, and action endpoints.
 
@@ -69,15 +70,19 @@ Advanced Automation Manager is the fleet hub for Ansible Automation Platform. It
 - `policy_results`: latest compliance state per environment and policy.
 - `sync_executions`: queue and execution history for inventory collection.
 - `action_audits`: record of operator actions proxied from AAM into remote environments.
+- `local_users`, `access_groups`, `group_memberships`: accounts and the groups that carry roles.
+- `identity_providers`: OpenID Connect, LDAP, and Active Directory configuration. Secrets are encrypted with `AAM_SECRET_KEY`.
+- `role_assignments`: system roles and per-environment roles for a user or a group. System scope stores an empty `environment_id`.
 
 ## RBAC model
 
-- Production mode expects AAP platform gateway or a trusted Envoy layer to forward user identity and roles.
-- AAM maps gateway-oriented roles into three app roles:
-  - `aam.admin`
-  - `aam.operator`
-  - `aam.viewer`
-- The app can be hosted behind the existing platform gateway or behind a dedicated gateway instance that shares the same identity source.
+Authorization follows Automation Orchestrator. Usage and provider configuration are in [authentication.md](authentication.md).
+
+- System roles apply to the hub: `admin`, `auditor`, `user`, `authenticated`.
+- Environment roles delegate the same idea onto one estate: `environment-admin`, `environment-user`, `environment-auditor`.
+- Built-in groups `admins`, `auditors`, `users`, and `authenticated` hold the matching system role.
+- Sessions are HMAC-signed cookies. Optional `x-rh-*` headers are accepted only when `AAM_TRUST_IDENTITY_HEADERS` is true.
+- Older route checks still see implied `aam.admin`, `aam.operator`, and `aam.viewer` values derived from these roles.
 
 ## Integration model
 

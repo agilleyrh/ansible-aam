@@ -10,9 +10,7 @@ RUN npm ci && npm run build
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 
-ENV AAM_API_UPSTREAM=http://aam-api:8000 \
-    AAM_DEFAULT_USER= \
-    AAM_DEFAULT_ROLES=
+ENV AAM_API_UPSTREAM=http://aam-api:8000
 
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY docker-entrypoint.sh /docker-entrypoint.sh

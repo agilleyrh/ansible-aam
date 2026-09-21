@@ -169,6 +169,69 @@ class SyncExecution(Base, TimestampedMixin):
     details: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class LocalUser(Base, TimestampedMixin):
+    __tablename__ = "local_users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    username: Mapped[str] = mapped_column(String(150), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    source: Mapped[str] = mapped_column(String(40), default="local")
+
+
+class AccessGroup(Base, TimestampedMixin):
+    __tablename__ = "access_groups"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class GroupMembership(Base, TimestampedMixin):
+    __tablename__ = "group_memberships"
+    __table_args__ = (UniqueConstraint("group_id", "user_id", name="uq_group_membership"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    group_id: Mapped[str] = mapped_column(ForeignKey("access_groups.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("local_users.id", ondelete="CASCADE"), index=True)
+
+
+class IdentityProvider(Base, TimestampedMixin):
+    __tablename__ = "identity_providers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    provider_type: Mapped[str] = mapped_column(String(20))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    allow_all_authenticated: Mapped[bool] = mapped_column(Boolean, default=False)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    encrypted_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class RoleAssignment(Base, TimestampedMixin):
+    __tablename__ = "role_assignments"
+    __table_args__ = (
+        UniqueConstraint(
+            "role",
+            "scope",
+            "environment_id",
+            "principal_type",
+            "principal_id",
+            name="uq_role_assignment",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    role: Mapped[str] = mapped_column(String(40), index=True)
+    scope: Mapped[str] = mapped_column(String(20), default="system")
+    environment_id: Mapped[str] = mapped_column(String(36), default="", index=True)
+    principal_type: Mapped[str] = mapped_column(String(20))
+    principal_id: Mapped[str] = mapped_column(String(36), index=True)
+
+
 class ActionAudit(Base, TimestampedMixin):
     __tablename__ = "action_audits"
 

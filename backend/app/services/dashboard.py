@@ -19,16 +19,21 @@ def _truthy(value: object) -> bool:
     return False
 
 
-def build_dashboard(db: Session) -> DashboardResponse:
-    environments = db.scalars(
+def build_dashboard(db: Session, environment_ids: list[str] | None = None) -> DashboardResponse:
+    statement = (
         select(ManagedEnvironment)
         .options(
             selectinload(ManagedEnvironment.snapshots),
             selectinload(ManagedEnvironment.resources),
         )
         .order_by(ManagedEnvironment.name)
-    ).all()
-    policy_results = db.scalars(select(PolicyResult)).all()
+    )
+    policy_statement = select(PolicyResult)
+    if environment_ids is not None:
+        statement = statement.where(ManagedEnvironment.id.in_(environment_ids or [""]))
+        policy_statement = policy_statement.where(PolicyResult.environment_id.in_(environment_ids or [""]))
+    environments = db.scalars(statement).all()
+    policy_results = db.scalars(policy_statement).all()
 
     env_counter = Counter(environment.status for environment in environments)
     compliance_counter = Counter(result.compliance for result in policy_results)

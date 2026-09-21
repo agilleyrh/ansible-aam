@@ -1,13 +1,3 @@
-map $http_x_rh_user $aam_user {
-  "" "${AAM_DEFAULT_USER}";
-  default $http_x_rh_user;
-}
-
-map $http_x_rh_roles $aam_roles {
-  "" "${AAM_DEFAULT_ROLES}";
-  default $http_x_rh_roles;
-}
-
 server {
   listen 8080;
   server_name _;
@@ -25,8 +15,8 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-RH-User $aam_user;
-    proxy_set_header X-RH-Roles $aam_roles;
+    proxy_set_header X-RH-User $http_x_rh_user;
+    proxy_set_header X-RH-Roles $http_x_rh_roles;
     proxy_set_header X-RH-Email $http_x_rh_email;
     proxy_set_header X-RH-Identity $http_x_rh_identity;
     proxy_read_timeout 120s;
