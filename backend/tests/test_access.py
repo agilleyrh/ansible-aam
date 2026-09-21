@@ -35,6 +35,51 @@ def test_environment_role_limits_visibility():
     assert "aam.operator" in profile.legacy_roles()
 
 
+def test_critical_transition_records_history_and_one_alert():
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+
+    from app.database import Base
+    from app.models import FleetAlert, HealthSample, ManagedEnvironment
+    from app.services.collector import record_fleet_signal
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        environment = ManagedEnvironment(name="Lab", slug="lab", status="healthy")
+        db.add(environment)
+        db.commit()
+
+        record_fleet_signal(
+            db,
+            environment,
+            previous_status="healthy",
+            status="critical",
+            health_score=12,
+            detail="sync failed",
+        )
+        record_fleet_signal(db, environment, previous_status="critical", status="critical", health_score=8)
+        db.commit()
+
+        alerts = db.scalars(select(FleetAlert)).all()
+        assert len(alerts) == 1
+        assert "Lab is critical." in alerts[0].message
+        assert alerts[0].acknowledged_at is None
+
+        record_fleet_signal(db, environment, previous_status="critical", status="healthy", health_score=95)
+        db.commit()
+        db.refresh(alerts[0])
+        assert alerts[0].acknowledged_at is not None
+        assert len(db.scalars(select(HealthSample)).all()) == 3
+
+
+def test_cancel_execution_is_a_remote_action():
+    from app.schemas import RemoteActionRequest
+
+    action = RemoteActionRequest(environment_id="env-1", action="cancel_execution", target_id="42")
+    assert action.action == "cancel_execution"
+
+
 def test_auditor_is_read_only_across_the_fleet():
     profile = AccessProfile(user_id="3", username="audit", email=None, system_roles={"auditor", "authenticated"})
     assert profile.sees_all_environments

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
@@ -10,7 +10,17 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.dependencies import get_db
-from app.models import ActionAudit, ManagedEnvironment, ManagedResource, PolicyDefinition, PolicyResult, RoleAssignment, SyncExecution
+from app.models import (
+    ActionAudit,
+    FleetAlert,
+    HealthSample,
+    ManagedEnvironment,
+    ManagedResource,
+    PolicyDefinition,
+    PolicyResult,
+    RoleAssignment,
+    SyncExecution,
+)
 from app.schemas import (
     ActivityEventResponse,
     DashboardResponse,
@@ -19,8 +29,10 @@ from app.schemas import (
     EnvironmentSummary,
     EnvironmentUpdate,
     EnvironmentGroupResponse,
+    FleetAlertResponse,
     FleetJobsResponse,
     FleetJobStatsResponse,
+    HealthSampleResponse,
     MonitoringResponse,
     PolicyCreate,
     PolicyUpdate,
@@ -116,6 +128,73 @@ def dashboard(
     user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> DashboardResponse:
     return build_dashboard(db, user.visible_environment_ids)
+
+
+@router.get("/health-history", response_model=list[HealthSampleResponse])
+def health_history(
+    db: Session = Depends(get_db),
+    user: UserContext = Depends(require_roles("aam.viewer")),
+) -> list[HealthSampleResponse]:
+    since = datetime.now(timezone.utc) - timedelta(days=14)
+    statement = (
+        select(HealthSample, ManagedEnvironment.name)
+        .join(ManagedEnvironment, ManagedEnvironment.id == HealthSample.environment_id)
+        .where(HealthSample.collected_at >= since)
+        .order_by(HealthSample.collected_at)
+    )
+    rows = db.execute(_limit_visible(statement, user)).all()
+    return [
+        HealthSampleResponse(
+            environment_id=sample.environment_id,
+            environment_name=name,
+            status=sample.status,
+            health_score=sample.health_score,
+            collected_at=sample.collected_at,
+        )
+        for sample, name in rows
+    ]
+
+
+@router.get("/alerts", response_model=list[FleetAlertResponse])
+def list_alerts(
+    db: Session = Depends(get_db),
+    user: UserContext = Depends(require_roles("aam.viewer")),
+) -> list[FleetAlertResponse]:
+    statement = (
+        select(FleetAlert, ManagedEnvironment.name)
+        .join(ManagedEnvironment, ManagedEnvironment.id == FleetAlert.environment_id)
+        .where(FleetAlert.acknowledged_at.is_(None))
+        .order_by(FleetAlert.created_at.desc())
+    )
+    rows = db.execute(_limit_visible(statement, user)).all()
+    return [
+        FleetAlertResponse(
+            id=alert.id,
+            environment_id=alert.environment_id,
+            environment_name=name,
+            severity=alert.severity,
+            message=alert.message,
+            created_at=alert.created_at,
+        )
+        for alert, name in rows
+    ]
+
+
+@router.post("/alerts/{alert_id}/acknowledge")
+def acknowledge_alert(
+    alert_id: str,
+    db: Session = Depends(get_db),
+    user: UserContext = Depends(require_roles("aam.viewer")),
+) -> dict[str, str]:
+    alert = db.get(FleetAlert, alert_id)
+    if alert is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found")
+    visible = user.visible_environment_ids
+    if visible is not None and alert.environment_id not in visible:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found")
+    alert.acknowledged_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"status": "acknowledged"}
 
 
 @router.get("/monitoring", response_model=MonitoringResponse)
@@ -714,6 +793,8 @@ def _action_summary(action: str, payload: dict, response: dict) -> str:
         return "Started repository sync"
     if action == "cancel_job":
         return "Requested job cancel"
+    if action == "cancel_execution":
+        return "Requested Automation Orchestrator execution cancel"
     if response.get("error"):
         return str(response["error"])
     return action.replace("_", " ")

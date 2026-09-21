@@ -9,12 +9,15 @@ import {
   Checkbox,
   Form,
   FormGroup,
+  FormSelect,
+  FormSelectOption,
   Stack,
   StackItem,
   TextArea,
   TextInput,
   Title,
 } from "@patternfly/react-core";
+import { Table, Tbody, Td, Th, Thead, Tr } from "@patternfly/react-table";
 
 import { api } from "../api";
 import { useAuth } from "../auth";
@@ -151,15 +154,32 @@ export function AccessPage() {
             </Title>
           </CardHeader>
           <CardBody>
-            <Stack hasGutter>
-              {users.map((user) => (
-                <StackItem key={user.id}>
-                  <strong>{user.username}</strong> · {user.source}
-                  {user.is_builtin ? " · built-in" : ""} · {user.groups.join(", ") || "no groups"}
-                </StackItem>
-              ))}
-              {isSystemAdmin ? (
-              <StackItem>
+            {users.length === 0 ? (
+              <p className="aam-muted">No accounts yet.</p>
+            ) : (
+              <Table aria-label="Users" variant="compact">
+                <Thead>
+                  <Tr>
+                    <Th>Username</Th>
+                    <Th>Source</Th>
+                    <Th>Groups</Th>
+                    <Th>Status</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {users.map((user) => (
+                    <Tr key={user.id}>
+                      <Td>{user.username}{user.is_builtin ? " (built-in)" : ""}</Td>
+                      <Td>{user.source}</Td>
+                      <Td>{user.groups.join(", ") || "none"}</Td>
+                      <Td>{user.is_active ? "Active" : "Disabled"}</Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            )}
+            {isSystemAdmin ? (
+              <div className="aam-form-section">
                 <Form onSubmit={createUser}>
                   <FormGroup label="Username" fieldId="new-username" isRequired>
                     <TextInput id="new-username" value={username} onChange={(_event, value) => setUsername(value)} />
@@ -179,9 +199,8 @@ export function AccessPage() {
                     Create local user
                   </Button>
                 </Form>
-              </StackItem>
+              </div>
               ) : null}
-            </Stack>
           </CardBody>
         </Card>
       </StackItem>
@@ -194,73 +213,98 @@ export function AccessPage() {
           </CardHeader>
           <CardBody>
             <Stack hasGutter>
-              {(directory?.assignments ?? []).map((assignment) => {
-                const principal =
-                  assignment.principal_type === "group"
-                    ? groups.find((group) => group.id === assignment.principal_id)?.name
-                    : users.find((user) => user.id === assignment.principal_id)?.username;
-                const estate = environments.find((environment) => environment.id === assignment.environment_id)?.name;
-                return (
-                  <StackItem key={assignment.id}>
-                    {assignment.role} on {assignment.scope === "environment" ? estate || assignment.environment_id : "the platform"}{" "}
-                    for {principal || assignment.principal_id}
-                    <Button variant="link" isDanger onClick={() => api.deleteAssignment(assignment.id).then(reload).catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not remove the role."))}>
-                      Remove
-                    </Button>
-                  </StackItem>
-                );
-              })}
+              {(directory?.assignments ?? []).length === 0 ? (
+                <StackItem>
+                  <p className="aam-muted">No extra role assignments yet. Built-in group roles still apply.</p>
+                </StackItem>
+              ) : (
+                <StackItem>
+                  <Table aria-label="Role assignments" variant="compact">
+                    <Thead>
+                      <Tr>
+                        <Th>Role</Th>
+                        <Th>Scope</Th>
+                        <Th>Principal</Th>
+                        <Th />
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {(directory?.assignments ?? []).map((assignment) => {
+                        const principal =
+                          assignment.principal_type === "group"
+                            ? groups.find((group) => group.id === assignment.principal_id)?.name
+                            : users.find((user) => user.id === assignment.principal_id)?.username;
+                        const estate = environments.find((environment) => environment.id === assignment.environment_id)?.name;
+                        return (
+                          <Tr key={assignment.id}>
+                            <Td>{assignment.role}</Td>
+                            <Td>{assignment.scope === "environment" ? estate || assignment.environment_id : "Platform"}</Td>
+                            <Td>{principal || assignment.principal_id}</Td>
+                            <Td>
+                              <Button
+                                variant="link"
+                                isDanger
+                                onClick={() =>
+                                  api.deleteAssignment(assignment.id).then(reload).catch((err: unknown) =>
+                                    setError(err instanceof Error ? err.message : "Could not remove the role."),
+                                  )
+                                }
+                              >
+                                Remove
+                              </Button>
+                            </Td>
+                          </Tr>
+                        );
+                      })}
+                    </Tbody>
+                  </Table>
+                </StackItem>
+              )}
               <StackItem>
                 <Form onSubmit={assignRole}>
                   <FormGroup label="Scope" fieldId="assign-scope">
-                    <select id="assign-scope" value={scope} onChange={(event) => setScope(event.target.value)}>
-                      <option value="environment">Environment</option>
-                      {isSystemAdmin ? <option value="system">System</option> : null}
-                    </select>
+                    <FormSelect id="assign-scope" value={scope} onChange={(_event, value) => setScope(value)}>
+                      <FormSelectOption value="environment" label="Environment" />
+                      {isSystemAdmin ? <FormSelectOption value="system" label="System" /> : null}
+                    </FormSelect>
                   </FormGroup>
                   <FormGroup label="Role" fieldId="assign-role">
-                    <select id="assign-role" value={role} onChange={(event) => setRole(event.target.value)}>
+                    <FormSelect id="assign-role" value={role} onChange={(_event, value) => setRole(value)}>
                       {(scope === "environment" ? directory?.environment_roles : directory?.system_roles)?.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
+                        <FormSelectOption key={item} value={item} label={item} />
                       ))}
-                    </select>
+                    </FormSelect>
                   </FormGroup>
                   {scope === "environment" ? (
                     <FormGroup label="Environment" fieldId="assign-environment">
-                      <select id="assign-environment" value={environmentId} onChange={(event) => setEnvironmentId(event.target.value)}>
-                        <option value="">Select an environment</option>
+                      <FormSelect id="assign-environment" value={environmentId} onChange={(_event, value) => setEnvironmentId(value)}>
+                        <FormSelectOption value="" label="Select an environment" />
                         {environments.map((environment) => (
-                          <option key={environment.id} value={environment.id}>
-                            {environment.name}
-                          </option>
+                          <FormSelectOption key={environment.id} value={environment.id} label={environment.name} />
                         ))}
-                      </select>
+                      </FormSelect>
                     </FormGroup>
                   ) : null}
                   <FormGroup label="Principal" fieldId="assign-principal-type">
-                    <select
+                    <FormSelect
                       id="assign-principal-type"
                       value={principalType}
-                      onChange={(event) => {
-                        setPrincipalType(event.target.value);
+                      onChange={(_event, value) => {
+                        setPrincipalType(value);
                         setPrincipalId("");
                       }}
                     >
-                      <option value="user">User</option>
-                      <option value="group">Group</option>
-                    </select>
+                      <FormSelectOption value="user" label="User" />
+                      <FormSelectOption value="group" label="Group" />
+                    </FormSelect>
                   </FormGroup>
                   <FormGroup label={principalType === "group" ? "Group" : "User"} fieldId="assign-principal">
-                    <select id="assign-principal" value={principalId} onChange={(event) => setPrincipalId(event.target.value)}>
-                      <option value="">Select</option>
+                    <FormSelect id="assign-principal" value={principalId} onChange={(_event, value) => setPrincipalId(value)}>
+                      <FormSelectOption value="" label="Select" />
                       {principals.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {"username" in item ? item.username : item.name}
-                        </option>
+                        <FormSelectOption key={item.id} value={item.id} label={"username" in item ? item.username : item.name} />
                       ))}
-                    </select>
+                    </FormSelect>
                   </FormGroup>
                   <Button type="submit" variant="primary">
                     Assign role
@@ -299,15 +343,15 @@ export function AccessPage() {
                     <TextInput id="provider-name" value={provider.name} onChange={(_event, value) => setProvider({ ...provider, name: value })} />
                   </FormGroup>
                   <FormGroup label="Type" fieldId="provider-type">
-                    <select
+                    <FormSelect
                       id="provider-type"
                       value={provider.provider_type}
-                      onChange={(event) => setProvider({ ...provider, provider_type: event.target.value })}
+                      onChange={(_event, value) => setProvider({ ...provider, provider_type: value })}
                     >
-                      <option value="oidc">OpenID Connect</option>
-                      <option value="ldap">LDAP</option>
-                      <option value="ad">Active Directory</option>
-                    </select>
+                      <FormSelectOption value="oidc" label="OpenID Connect" />
+                      <FormSelectOption value="ldap" label="LDAP" />
+                      <FormSelectOption value="ad" label="Active Directory" />
+                    </FormSelect>
                   </FormGroup>
                   <Checkbox
                     id="provider-enabled"

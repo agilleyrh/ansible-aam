@@ -179,6 +179,23 @@ export type ConfigBaseline = {
   drift: ConfigDriftItem[];
 };
 
+export type HealthSample = {
+  environment_id: string;
+  environment_name: string;
+  status: string;
+  health_score: number;
+  collected_at: string;
+};
+
+export type FleetAlert = {
+  id: string;
+  environment_id: string;
+  environment_name: string;
+  severity: string;
+  message: string;
+  created_at: string;
+};
+
 export type CurrentUser = {
   id?: string;
   username: string;
@@ -341,6 +358,7 @@ export type RemoteActionName =
   | "sync_project"
   | "sync_repository"
   | "cancel_job"
+  | "cancel_execution"
   | "patch_controller_settings"
   | "ensure_organization"
   | "ensure_execution_environment"

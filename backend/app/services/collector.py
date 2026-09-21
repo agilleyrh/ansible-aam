@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from redis import Redis
 from rq import Queue
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import ActionAudit, ManagedEnvironment, ManagedResource, ServiceSnapshot, SyncExecution
+from app.models import ActionAudit, FleetAlert, HealthSample, ManagedEnvironment, ManagedResource, ServiceSnapshot, SyncExecution
 from app.services.connectors import AAPConnector
 from app.services.policies import evaluate_policies
 
@@ -62,6 +62,51 @@ def upsert_snapshot(db: Session, environment_id: str, service: str, health: str,
     snapshot.collected_at = datetime.now(timezone.utc)
 
 
+def record_fleet_signal(
+    db: Session,
+    environment: ManagedEnvironment,
+    *,
+    previous_status: str | None,
+    status: str,
+    health_score: int,
+    detail: str | None = None,
+) -> None:
+    now = datetime.now(timezone.utc)
+    db.add(
+        HealthSample(
+            environment_id=environment.id,
+            status=status,
+            health_score=max(0, min(int(health_score), 100)),
+            collected_at=now,
+        )
+    )
+    cutoff = now - timedelta(days=14)
+    db.execute(
+        delete(HealthSample).where(
+            HealthSample.environment_id == environment.id,
+            HealthSample.collected_at < cutoff,
+        )
+    )
+    open_alert = db.scalars(
+        select(FleetAlert).where(
+            FleetAlert.environment_id == environment.id,
+            FleetAlert.acknowledged_at.is_(None),
+        )
+    ).first()
+    if status == "critical":
+        if open_alert is None and previous_status != "critical":
+            reason = f" {detail.strip()[:240]}" if detail and detail.strip() else ""
+            db.add(
+                FleetAlert(
+                    environment_id=environment.id,
+                    severity="critical",
+                    message=f"{environment.name} is critical.{reason}",
+                )
+            )
+    elif open_alert is not None:
+        open_alert.acknowledged_at = now
+
+
 def run_environment_sync(environment_id: str, requested_by: str = "system") -> None:
     db = SessionLocal()
     execution = SyncExecution(
@@ -77,6 +122,7 @@ def run_environment_sync(environment_id: str, requested_by: str = "system") -> N
         environment = db.get(ManagedEnvironment, environment_id)
         if environment is None:
             raise RuntimeError("Environment not found")
+        previous_status = environment.status
 
         result = asyncio.run(AAPConnector(environment).collect())
 
@@ -109,6 +155,13 @@ def run_environment_sync(environment_id: str, requested_by: str = "system") -> N
         }
         environment.last_synced_at = datetime.now(timezone.utc)
         environment.last_sync_error = None
+        record_fleet_signal(
+            db,
+            environment,
+            previous_status=previous_status,
+            status=environment.status,
+            health_score=int(result.get("health_score", 0) or 0),
+        )
 
         evaluate_policies(db, environment)
 
@@ -122,8 +175,17 @@ def run_environment_sync(environment_id: str, requested_by: str = "system") -> N
         execution.error_text = str(exc)
         environment = db.get(ManagedEnvironment, environment_id)
         if environment is not None:
+            previous_status = environment.status
             environment.status = "critical"
             environment.last_sync_error = str(exc)
+            record_fleet_signal(
+                db,
+                environment,
+                previous_status=previous_status,
+                status="critical",
+                health_score=0,
+                detail=str(exc),
+            )
         db.commit()
         raise
     finally:

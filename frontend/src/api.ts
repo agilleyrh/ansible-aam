@@ -2,6 +2,8 @@ import type {
   ActivityEvent,
   CurrentUser,
   DashboardResponse,
+  FleetAlert,
+  HealthSample,
   EnvironmentDetail,
   EnvironmentMutationPayload,
   EnvironmentSummary,
@@ -102,6 +104,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 export const api = {
   dashboard: (signal?: AbortSignal) => request<DashboardResponse>("/dashboard", { signal }),
+  healthHistory: (signal?: AbortSignal) => request<HealthSample[]>("/health-history", { signal }),
+  alerts: (signal?: AbortSignal) => request<FleetAlert[]>("/alerts", { signal }),
+  acknowledgeAlert: (id: string) => request<{ status: string }>(`/alerts/${id}/acknowledge`, { method: "POST" }),
   monitoring: (signal?: AbortSignal) => request<MonitoringResponse>("/monitoring", { signal }),
   environments: (signal?: AbortSignal) => request<EnvironmentSummary[]>("/environments", { signal }),
   environment: (id: string, signal?: AbortSignal) => request<EnvironmentDetail>(`/environments/${id}`, { signal }),
@@ -136,6 +141,8 @@ export const api = {
   accessDirectory: (signal?: AbortSignal) => request<AccessDirectory>("/access/directory", { signal }),
   createAccessUser: (payload: { username: string; email?: string; password: string; groups: string[] }) =>
     request<{ id: string; username: string }>("/access/users", { method: "POST", body: payload }),
+  updateAccessUser: (id: string, payload: { password?: string; email?: string; is_active?: boolean }) =>
+    request<{ id: string; username: string }>(`/access/users/${id}`, { method: "PATCH", body: payload }),
   createAssignment: (payload: {
     role: string;
     scope: string;

@@ -84,6 +84,8 @@ On Apple Silicon CRC, the RHEL Redis build exits with a qemu segmentation fault 
 
 - `managed_environments`: remote AAP instances, URLs, auth mode, deployment type, infrastructure metadata, override paths, fleet metadata.
 - `service_snapshots`: latest per-service health summary for gateway, controller, EDA, and hub.
+- `health_samples`: health score recorded on each sync, kept for 14 days, so the overview can chart change over time.
+- `fleet_alerts`: an open alert when an estate transitions to critical. The alert clears when the estate recovers or a user dismisses it.
 - `managed_resources`: normalized search/topology inventory such as job templates, inventories, activations, projects, repositories, collections, and recent/running jobs.
 - `policy_definitions`: governance policies modeled as rule documents.
 - `policy_results`: latest compliance state per environment and policy.
@@ -111,6 +113,11 @@ Authorization follows Automation Orchestrator. Usage and provider configuration 
 - Collects running/pending/failed job pressure.
 - Supports central launch of job templates and workflows.
 - Supports cancel of active jobs through the hub actions API.
+
+### Automation Orchestrator
+
+- Syncs workflows, executions, and integrations as their own estate.
+- Supports cancel of a running execution through `POST /api/v1/executions/{id}/cancel`.
 
 ### EDA
 

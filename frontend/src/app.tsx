@@ -7,6 +7,7 @@ import { AppLayout } from "./components/layout";
 import { EmptyState } from "./components/empty-state";
 import { LinkButton } from "./components/link-button";
 import { AccessPage } from "./pages/access";
+import { AccountPage } from "./pages/account";
 import { ActivityPage } from "./pages/activity";
 import { DashboardPage } from "./pages/dashboard";
 import { EnvironmentDetailPage } from "./pages/environment-detail";
@@ -51,6 +52,7 @@ export function App() {
               <Route path="/policies" element={<PoliciesPage />} />
               <Route path="/topology" element={<TopologyPage />} />
               <Route path="/search" element={<SearchPage />} />
+              <Route path="/account" element={<AccountPage />} />
               <Route path="/access" element={<AccessPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<NotFoundPage />} />
