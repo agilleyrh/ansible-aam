@@ -69,10 +69,10 @@ The backend exposes endpoints for:
 - policy definitions and results
 - search, sync history, activity stream
 - runtime settings
-- remote actions (`POST /api/v1/actions`), including `cancel_job` for active controller jobs and `cancel_execution` for running Automation Orchestrator executions
+- remote actions (`POST /api/v1/actions`), including `cancel_job`, `cancel_workflow_job`, `cancel_execution`, and `decide_approval`
 - health history (`GET /api/v1/health-history`) and open critical alerts (`GET /api/v1/alerts`)
 
-Job listing accepts `status` values such as `running`, `failed`, or `active` (expands to running/pending/waiting). Cancel is performed through `POST /api/v1/actions` with `action: "cancel_job"` for controller jobs or `action: "cancel_execution"` for Orchestrator executions.
+Job listing accepts `status` values such as `running`, `failed`, or `active` (expands to running/pending/waiting). Cancel is performed through `POST /api/v1/actions`: `cancel_job` for controller playbook jobs, `cancel_workflow_job` for workflow jobs, and `cancel_execution` for Orchestrator executions. Pending Orchestrator approvals are listed at `GET /api/v1/approvals` and decided with `decide_approval`. Changing a password or disabling an account ends older sessions.
 
 The API is mounted at `/api/v1`. Swagger UI is available at `/docs`.
 
@@ -295,7 +295,7 @@ Sign-in and authorization follow the Automation Orchestrator model. Full setup s
 - Compose/Podman configs target lab usage; harden secrets and TLS for production.
 - OpenShift Operator scaffold provides CRD/RBAC/manager manifests; use `deploy/openshift` to install the hub. Full Operator SDK reconciler packaging remains a later step.
 - Cloud/OpenShift/Podman are first-class **registration and labeling** dimensions today; deeper cloud-account or cluster-API integrations can be layered on next.
-- Controller job cancel targets `/api/controller/v2/jobs/{id}/cancel/`. Automation Orchestrator execution cancel targets `/api/v1/executions/{id}/cancel`. Workflow and project update jobs are not canceled through those actions.
+- Controller playbook cancel targets `/api/controller/v2/jobs/{id}/cancel/`. Workflow job cancel targets `/api/controller/v2/workflow_jobs/{id}/cancel/`. Automation Orchestrator execution cancel targets `/api/v1/executions/{id}/cancel`. Project update jobs are not canceled through those actions.
 - Existing development databases created before the infrastructure migration still need `alembic upgrade head` — `create_all` alone does not add new columns.
 - On Apple Silicon CRC/MicroShift, keep `OPENSSL_armcap=0` (image and ConfigMap default). The guest advertises SVE2 that cryptography's bundled OpenSSL would otherwise probe, crashing Python with SIGILL.
 

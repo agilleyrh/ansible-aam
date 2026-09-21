@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -302,6 +303,8 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), _: UserConte
 def update_user(
     user_id: str,
     payload: UserUpdate,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     actor: UserContext = Depends(resolve_user),
 ) -> dict:
@@ -318,15 +321,20 @@ def update_user(
         if problem:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=problem)
         user.password_hash = hash_password(payload.password)
+        user.sessions_valid_after = datetime.now(timezone.utc)
     if payload.is_active is not None:
         if self_edit or user.is_builtin:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This account cannot be disabled that way.")
         user.is_active = payload.is_active
+        if not payload.is_active:
+            user.sessions_valid_after = datetime.now(timezone.utc)
     if payload.groups is not None:
         if "admin" not in actor.system_roles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only a system administrator can change groups.")
         _set_groups(db, user, payload.groups)
     db.commit()
+    if self_edit and payload.password:
+        _set_session(response, request, user)
     return {"id": user.id, "username": user.username}
 
 

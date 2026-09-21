@@ -118,6 +118,7 @@ Authorization follows Automation Orchestrator. Usage and provider configuration 
 
 - Syncs workflows, executions, and integrations as their own estate.
 - Supports cancel of a running execution through `POST /api/v1/executions/{id}/cancel`.
+- Lists pending approvals and records approve or reject through `POST /api/v1/approvals/{id}/approve` or `/reject`.
 
 ### EDA
 

@@ -353,7 +353,9 @@ class RemoteActionRequest(BaseModel):
         "sync_project",
         "sync_repository",
         "cancel_job",
+        "cancel_workflow_job",
         "cancel_execution",
+        "decide_approval",
         "patch_controller_settings",
         "ensure_organization",
         "ensure_execution_environment",
@@ -451,3 +453,15 @@ class FleetAlertResponse(BaseModel):
     severity: str
     message: str
     created_at: datetime
+    acknowledged_at: datetime | None = None
+    resolved_at: datetime | None = None
+
+
+class OrchestratorApproval(BaseModel):
+    id: str
+    name: str
+    status: str
+    environment_id: str
+    environment_name: str
+    message: str = ""
+    workflow_name: str | None = None

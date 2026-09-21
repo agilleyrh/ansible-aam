@@ -194,6 +194,18 @@ export type FleetAlert = {
   severity: string;
   message: string;
   created_at: string;
+  acknowledged_at?: string | null;
+  resolved_at?: string | null;
+};
+
+export type OrchestratorApproval = {
+  id: string;
+  name: string;
+  status: string;
+  environment_id: string;
+  environment_name: string;
+  message: string;
+  workflow_name?: string | null;
 };
 
 export type CurrentUser = {
@@ -358,7 +370,9 @@ export type RemoteActionName =
   | "sync_project"
   | "sync_repository"
   | "cancel_job"
+  | "cancel_workflow_job"
   | "cancel_execution"
+  | "decide_approval"
   | "patch_controller_settings"
   | "ensure_organization"
   | "ensure_execution_environment"

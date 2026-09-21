@@ -4,6 +4,7 @@ import type {
   DashboardResponse,
   FleetAlert,
   HealthSample,
+  OrchestratorApproval,
   EnvironmentDetail,
   EnvironmentMutationPayload,
   EnvironmentSummary,
@@ -104,8 +105,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 export const api = {
   dashboard: (signal?: AbortSignal) => request<DashboardResponse>("/dashboard", { signal }),
-  healthHistory: (signal?: AbortSignal) => request<HealthSample[]>("/health-history", { signal }),
-  alerts: (signal?: AbortSignal) => request<FleetAlert[]>("/alerts", { signal }),
+  healthHistory: (environmentId?: string, signal?: AbortSignal) =>
+    request<HealthSample[]>(
+      `/health-history${environmentId ? `?environment_id=${encodeURIComponent(environmentId)}` : ""}`,
+      { signal },
+    ),
+  alerts: (includeClosed = false, signal?: AbortSignal) =>
+    request<FleetAlert[]>(`/alerts${includeClosed ? "?include_closed=true" : ""}`, { signal }),
+  approvals: (signal?: AbortSignal) => request<OrchestratorApproval[]>("/approvals", { signal }),
   acknowledgeAlert: (id: string) => request<{ status: string }>(`/alerts/${id}/acknowledge`, { method: "POST" }),
   monitoring: (signal?: AbortSignal) => request<MonitoringResponse>("/monitoring", { signal }),
   environments: (signal?: AbortSignal) => request<EnvironmentSummary[]>("/environments", { signal }),

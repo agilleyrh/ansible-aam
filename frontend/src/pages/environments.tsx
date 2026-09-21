@@ -34,6 +34,19 @@ import { serviceLabels } from "../monitoring";
 import type { EnvironmentMutationPayload, EnvironmentSummary } from "../types";
 import { deploymentTypeLabel, environmentKind, environmentKindLabel, formatDateTime } from "../utils";
 
+function healthScoreStatus(score: unknown): string {
+  if (typeof score !== "number" || !Number.isFinite(score)) {
+    return "unknown";
+  }
+  if (score >= 80) {
+    return "healthy";
+  }
+  if (score >= 50) {
+    return "warning";
+  }
+  return "critical";
+}
+
 function getServiceStatuses(environment: EnvironmentSummary): Array<{ service: string; health: string }> {
   const serviceSummaries = environment.summary.service_summaries;
   if (!serviceSummaries || typeof serviceSummaries !== "object" || Array.isArray(serviceSummaries)) {
@@ -332,7 +345,10 @@ export function EnvironmentsPage() {
                             <Content component="small" className="aam-muted">
                               Health score
                             </Content>
-                            <div>{String(environment.summary.health_score ?? "n/a")}</div>
+                            <div className="aam-link-cluster">
+                              <StatusPill status={healthScoreStatus(environment.summary.health_score)} />
+                              <span>{typeof environment.summary.health_score === "number" ? environment.summary.health_score : "n/a"}</span>
+                            </div>
                           </StackItem>
                           <StackItem>
                             <LinkButton to={`/environments/${environment.id}`} variant="secondary" size="sm">

@@ -62,8 +62,9 @@ def issue_session_token(user_id: str, username: str) -> str:
     import base64
     import json
 
-    expires = datetime.now(timezone.utc) + timedelta(minutes=get_settings().session_ttl_minutes)
-    payload = {"sub": user_id, "username": username, "exp": int(expires.timestamp())}
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(minutes=get_settings().session_ttl_minutes)
+    payload = {"sub": user_id, "username": username, "iat": int(now.timestamp()), "exp": int(expires.timestamp())}
     body = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii").rstrip("=")
     return f"{body}.{_sign(body)}"
 
@@ -86,3 +87,10 @@ def read_session_token(token: str | None) -> dict | None:
     if exp < int(datetime.now(timezone.utc).timestamp()):
         return None
     return payload
+
+
+def session_still_valid(payload: dict, valid_after: datetime | None) -> bool:
+    if valid_after is None:
+        return True
+    moment = valid_after if valid_after.tzinfo else valid_after.replace(tzinfo=timezone.utc)
+    return int(payload.get("iat") or 0) >= int(moment.timestamp())

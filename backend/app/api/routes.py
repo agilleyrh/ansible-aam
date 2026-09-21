@@ -30,6 +30,7 @@ from app.schemas import (
     EnvironmentUpdate,
     EnvironmentGroupResponse,
     FleetAlertResponse,
+    OrchestratorApproval,
     FleetJobsResponse,
     FleetJobStatsResponse,
     HealthSampleResponse,
@@ -53,9 +54,9 @@ from app.schemas import (
 )
 from app.config import get_settings
 from app.health import health_response
-from app.security import encrypt_secret, require_roles, resolve_user
 from app.services.collector import enqueue_sync, record_action
-from app.services.connectors import AAPConnector, SERVICE_LABELS
+from app.security import encrypt_secret, environment_is_visible, require_roles, resolve_user
+from app.services.connectors import AAPConnector, SERVICE_LABELS, is_orchestrator_environment
 from app.services.dashboard import build_dashboard
 from app.services.jobs import build_fleet_job_stats, build_fleet_jobs
 from app.services.monitoring import build_monitoring
@@ -132,9 +133,12 @@ def dashboard(
 
 @router.get("/health-history", response_model=list[HealthSampleResponse])
 def health_history(
+    environment_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> list[HealthSampleResponse]:
+    if environment_id and not environment_is_visible(user, environment_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Environment not found")
     since = datetime.now(timezone.utc) - timedelta(days=14)
     statement = (
         select(HealthSample, ManagedEnvironment.name)
@@ -142,6 +146,8 @@ def health_history(
         .where(HealthSample.collected_at >= since)
         .order_by(HealthSample.collected_at)
     )
+    if environment_id:
+        statement = statement.where(HealthSample.environment_id == environment_id)
     rows = db.execute(_limit_visible(statement, user)).all()
     return [
         HealthSampleResponse(
@@ -157,15 +163,19 @@ def health_history(
 
 @router.get("/alerts", response_model=list[FleetAlertResponse])
 def list_alerts(
+    include_closed: bool = Query(default=False),
     db: Session = Depends(get_db),
     user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> list[FleetAlertResponse]:
     statement = (
         select(FleetAlert, ManagedEnvironment.name)
         .join(ManagedEnvironment, ManagedEnvironment.id == FleetAlert.environment_id)
-        .where(FleetAlert.acknowledged_at.is_(None))
         .order_by(FleetAlert.created_at.desc())
     )
+    if not include_closed:
+        statement = statement.where(FleetAlert.acknowledged_at.is_(None), FleetAlert.resolved_at.is_(None))
+    else:
+        statement = statement.limit(40)
     rows = db.execute(_limit_visible(statement, user)).all()
     return [
         FleetAlertResponse(
@@ -175,6 +185,8 @@ def list_alerts(
             severity=alert.severity,
             message=alert.message,
             created_at=alert.created_at,
+            acknowledged_at=alert.acknowledged_at,
+            resolved_at=alert.resolved_at,
         )
         for alert, name in rows
     ]
@@ -228,6 +240,39 @@ async def job_stats(
     user: UserContext = Depends(require_roles("aam.viewer")),
 ) -> FleetJobStatsResponse:
     return await build_fleet_job_stats(db, user.visible_environment_ids)
+
+
+@router.get("/approvals", response_model=list[OrchestratorApproval])
+async def list_approvals(
+    db: Session = Depends(get_db),
+    user: UserContext = Depends(require_roles("aam.viewer")),
+) -> list[OrchestratorApproval]:
+    environments = db.scalars(_limit_visible(select(ManagedEnvironment).order_by(ManagedEnvironment.name), user)).all()
+    approvals: list[OrchestratorApproval] = []
+    for environment in environments:
+        if not is_orchestrator_environment(environment):
+            continue
+        try:
+            records = await AAPConnector(environment).list_orchestrator_approvals()
+        except Exception:  # noqa: BLE001
+            logger.warning("Approval list failed for environment %s", environment.id)
+            continue
+        for item in records:
+            approval_id = str(item.get("id") or "")
+            if not approval_id:
+                continue
+            approvals.append(
+                OrchestratorApproval(
+                    id=approval_id,
+                    name=str(item.get("name") or item.get("prompt") or item.get("title") or f"Approval {approval_id}"),
+                    status=str(item.get("status") or "pending"),
+                    environment_id=environment.id,
+                    environment_name=environment.name,
+                    message=str(item.get("message") or item.get("prompt") or ""),
+                    workflow_name=item.get("workflow_name") if isinstance(item.get("workflow_name"), str) else None,
+                )
+            )
+    return approvals
 
 
 @router.get("/environments", response_model=list[EnvironmentSummary])
@@ -793,8 +838,13 @@ def _action_summary(action: str, payload: dict, response: dict) -> str:
         return "Started repository sync"
     if action == "cancel_job":
         return "Requested job cancel"
+    if action == "cancel_workflow_job":
+        return "Requested workflow job cancel"
     if action == "cancel_execution":
         return "Requested Automation Orchestrator execution cancel"
+    if action == "decide_approval":
+        decision = str(payload.get("decision") or "decide")
+        return f"Recorded approval decision: {decision}"
     if response.get("error"):
         return str(response["error"])
     return action.replace("_", " ")
@@ -976,6 +1026,8 @@ async def execute_action(
             request_body=payload.payload,
             response_body=response_body,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         logger.exception("Action %s on environment %s failed", payload.action, payload.environment_id)
         audit = record_action(

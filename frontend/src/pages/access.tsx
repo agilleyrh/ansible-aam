@@ -25,6 +25,7 @@ import { PageHeader } from "../components/page-header";
 import type { AccessDirectory, EnvironmentSummary } from "../types";
 
 const emptyProvider = {
+  id: "",
   name: "",
   provider_type: "oidc",
   enabled: false,
@@ -107,14 +108,19 @@ export function AccessPage() {
       return;
     }
     try {
-      await api.createIdentityProvider({
+      const body = {
         name: provider.name,
         provider_type: provider.provider_type,
         enabled: provider.enabled,
         allow_all_authenticated: provider.allow_all_authenticated,
         config,
         secret: provider.secret || null,
-      });
+      };
+      if (provider.id) {
+        await api.updateIdentityProvider(provider.id, body);
+      } else {
+        await api.createIdentityProvider(body);
+      }
       setProvider(emptyProvider);
       setNotice("Identity provider saved.");
       await reload();
@@ -330,6 +336,22 @@ export function AccessPage() {
                   <strong>{item.name}</strong> · {item.provider_type} · {item.enabled ? "enabled" : "disabled"}
                   <Button
                     variant="link"
+                    onClick={() =>
+                      setProvider({
+                        id: item.id,
+                        name: item.name,
+                        provider_type: item.provider_type,
+                        enabled: item.enabled,
+                        allow_all_authenticated: item.allow_all_authenticated,
+                        configText: JSON.stringify(item.config ?? {}, null, 2),
+                        secret: "",
+                      })
+                    }
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="link"
                     isDanger
                     onClick={() => api.deleteIdentityProvider(item.id).then(reload).catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not remove the provider."))}
                   >
@@ -386,8 +408,13 @@ export function AccessPage() {
                     />
                   </FormGroup>
                   <Button type="submit" variant="primary">
-                    Add identity provider
+                    {provider.id ? "Save identity provider" : "Add identity provider"}
                   </Button>
+                  {provider.id ? (
+                    <Button type="button" variant="link" onClick={() => setProvider(emptyProvider)}>
+                      Cancel edit
+                    </Button>
+                  ) : null}
                 </Form>
               </StackItem>
             </Stack>

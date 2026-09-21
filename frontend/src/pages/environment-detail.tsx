@@ -19,6 +19,10 @@ import {
   Grid,
   GridItem,
   Label,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
   SearchInput,
   Stack,
   StackItem,
@@ -32,6 +36,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { describeCapabilityProfile, parseCapabilityProfile } from "../capabilities";
 import { ActivityTable } from "../components/activity-table";
+import { averageScoreByDay, ColumnChart } from "../components/charts";
 import { EmptyState } from "../components/empty-state";
 import { EnvironmentForm } from "../components/environment-form";
 import { LinkButton } from "../components/link-button";
@@ -54,7 +59,7 @@ import {
   serviceLabel,
   serviceLabels,
 } from "../monitoring";
-import type { ActivityEvent, EnvironmentDetail, EnvironmentMutationPayload, RemoteActionName, Resource } from "../types";
+import type { ActivityEvent, EnvironmentDetail, EnvironmentMutationPayload, HealthSample, RemoteActionName, Resource } from "../types";
 import { deploymentTypeLabel, environmentKind, environmentKindLabel, formatDateTime, humanize, stringifyValue } from "../utils";
 
 type ResourceAction = {
@@ -108,15 +113,18 @@ export function EnvironmentDetailPage() {
   const [activeTabKey, setActiveTabKey] = useState<string | number>("overview");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [healthHistory, setHealthHistory] = useState<HealthSample[]>([]);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   async function loadEnvironment(signal?: AbortSignal) {
     if (!environmentId) {
       return;
     }
 
-    const [detailResult, activityResult] = await Promise.allSettled([
+    const [detailResult, activityResult, historyResult] = await Promise.allSettled([
       api.environment(environmentId, signal),
       api.activity(environmentId, signal),
+      api.healthHistory(environmentId, signal),
     ]);
     if (signal?.aborted) {
       return;
@@ -129,6 +137,9 @@ export function EnvironmentDetailPage() {
     }
     if (activityResult.status === "fulfilled") {
       setActivity(activityResult.value);
+    }
+    if (historyResult.status === "fulfilled") {
+      setHealthHistory(historyResult.value);
     }
   }
 
@@ -205,10 +216,7 @@ export function EnvironmentDetailPage() {
       return;
     }
 
-    if (!window.confirm(`Delete ${environment.name}? This removes all collected resources, sync history, and policy results for this environment.`)) {
-      return;
-    }
-
+    setDeleteOpen(false);
     setBusy(true);
     setError(null);
     try {
@@ -402,7 +410,7 @@ export function EnvironmentDetailPage() {
               <Button type="button" variant="secondary" isLoading={syncing} isDisabled={syncing} onClick={handleSync}>
                 {syncing ? "Queueing..." : "Queue sync"}
               </Button>
-              <Button type="button" variant="danger" isDisabled={busy} onClick={handleDelete}>
+              <Button type="button" variant="danger" isDisabled={busy} onClick={() => setDeleteOpen(true)}>
                 Delete environment
               </Button>
             </>
@@ -690,6 +698,22 @@ export function EnvironmentDetailPage() {
 
           <Tab eventKey="monitoring" title="Monitoring">
             <Stack hasGutter className="aam-tab-panel">
+              <StackItem>
+                <Card>
+                  <CardHeader>
+                    <Title headingLevel="h2" size="lg">
+                      Health this week
+                    </Title>
+                  </CardHeader>
+                  <CardBody>
+                    <ColumnChart
+                      items={averageScoreByDay(healthHistory)}
+                      emptyText="Sync this environment to start a health trend."
+                      label="Health score by day"
+                    />
+                  </CardBody>
+                </Card>
+              </StackItem>
               <StackItem>
                 <Grid hasGutter>
                   <GridItem lg={6}>
@@ -1133,6 +1157,20 @@ export function EnvironmentDetailPage() {
           </Tab>
         </Tabs>
       </StackItem>
+      <Modal isOpen={deleteOpen} variant="small" onClose={() => setDeleteOpen(false)} aria-labelledby="delete-environment-title">
+        <ModalHeader title="Delete environment" labelId="delete-environment-title" />
+        <ModalBody>
+          Delete {environment.name}? This removes collected resources, sync history, health samples, and policy results for this estate.
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="danger" isLoading={busy} onClick={handleDelete}>
+            Delete environment
+          </Button>
+          <Button variant="link" onClick={() => setDeleteOpen(false)}>
+            Cancel
+          </Button>
+        </ModalFooter>
+      </Modal>
     </Stack>
   );
 }

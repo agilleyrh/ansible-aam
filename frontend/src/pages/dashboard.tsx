@@ -98,7 +98,7 @@ export function DashboardPage() {
     Promise.allSettled([
       api.dashboard(controller.signal),
       api.activity(undefined, controller.signal),
-      api.healthHistory(controller.signal),
+      api.healthHistory(undefined, controller.signal),
     ])
       .then(([dashboardResult, activityResult, historyResult]) => {
         if (controller.signal.aborted) {
