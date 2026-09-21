@@ -31,6 +31,23 @@ Advanced Automation Manager is the fleet hub for Ansible Automation Platform. It
 | RHEL / Podman | `deploy/podman/` (Compose + Quadlet) |
 | OpenShift | `deploy/openshift/` (Kustomize + `deploy.sh` for CRC MicroShift) |
 
+## Platform stack
+
+The hub uses the same open-source building blocks as Ansible Automation Platform and OpenShift, packaged the way those products package them.
+
+| Piece | Choice | Why |
+| --- | --- | --- |
+| API runtime | Python 3.12 on `ubi9/python-312` | UBI, same base family as AAP service images. |
+| HTTP API | FastAPI, Uvicorn on the asyncio/h11 loop | Open-source service API. The portable loop avoids the Apple Silicon CRC OpenSSL probe. |
+| UI | React and PatternFly 6, served by `ubi9/nginx-124` | PatternFly is the Red Hat console toolkit used by OpenShift and AAP. |
+| Database | PostgreSQL 16, `quay.io/sclorg/postgresql-16-c9s` | Same Software Collections image OpenShift samples and AAP use. The client links the UBI `libpq` package rather than a bundled wheel. |
+| Queue | Redis 7, `quay.io/sclorg/redis-7-c9s`, with RQ | Same image family. Redis is the broker; RQ is the worker library. |
+| Schema | SQLAlchemy and Alembic | Versioned migrations, applied by the API on startup. |
+| Passwords | Argon2id | Same local-password hash Automation Orchestrator uses. |
+| Directory and SSO | OpenID Connect, LDAP, Active Directory | Same sign-in methods as AAP and Automation Orchestrator. |
+
+RHEL customers can substitute `registry.redhat.io/rhel9/postgresql-16` and `registry.redhat.io/rhel9/redis-7`. Those are the entitled builds of the same sclorg images. Nothing in the hub is proprietary.
+
 ## Major services
 
 ### API

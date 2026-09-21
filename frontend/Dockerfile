@@ -8,20 +8,20 @@ COPY --chown=1001:0 src ./src
 
 RUN npm ci && npm run build
 
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM registry.access.redhat.com/ubi9/nginx-124:latest
 
 ENV AAM_API_UPSTREAM=http://aam-api:8000
 
-COPY nginx.conf.template /etc/nginx/templates/default.conf.template
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-COPY --from=build /opt/app-root/src/dist /usr/share/nginx/html
+COPY nginx.conf.template /opt/app-root/etc/nginx.conf.template
+COPY docker-entrypoint.sh /opt/app-root/docker-entrypoint.sh
+COPY --from=build /opt/app-root/src/dist /opt/app-root/src
 
 USER 0
-RUN chmod +x /docker-entrypoint.sh \
-    && chown -R 101:0 /usr/share/nginx/html /etc/nginx/conf.d /etc/nginx/templates \
-    && chmod -R g=u /usr/share/nginx/html /etc/nginx/conf.d /etc/nginx/templates
-USER 101
+RUN chmod +x /opt/app-root/docker-entrypoint.sh \
+    && chown -R 1001:0 /opt/app-root \
+    && chmod -R g=u /opt/app-root
+USER 1001
 
 EXPOSE 8080
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
+ENTRYPOINT ["/opt/app-root/docker-entrypoint.sh"]

@@ -6,6 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /opt/app-root/src
 
+USER 0
+RUN dnf install -y --setopt=tsflags=nodocs libpq && dnf clean all
+USER 1001
+
 COPY --chown=1001:0 pyproject.toml README.md alembic.ini ./
 COPY --chown=1001:0 alembic ./alembic
 COPY --chown=1001:0 app ./app

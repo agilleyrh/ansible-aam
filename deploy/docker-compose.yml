@@ -1,22 +1,22 @@
 services:
   postgres:
-    image: postgres:16
+    image: quay.io/sclorg/postgresql-16-c9s:latest
     environment:
-      POSTGRES_DB: aam
-      POSTGRES_USER: aam
-      POSTGRES_PASSWORD: aam
+      POSTGRESQL_DATABASE: aam
+      POSTGRESQL_USER: aam
+      POSTGRESQL_PASSWORD: aam
     ports:
       - "5432:5432"
     volumes:
-      - aam-postgres:/var/lib/postgresql/data
+      - aam-postgres:/var/lib/pgsql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aam -d aam"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1"]
       interval: 5s
       timeout: 5s
       retries: 20
 
   redis:
-    image: redis:7-alpine
+    image: quay.io/sclorg/redis-7-c9s:latest
     ports:
       - "6379:6379"
     healthcheck:

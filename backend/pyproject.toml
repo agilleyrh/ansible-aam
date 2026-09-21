@@ -16,11 +16,11 @@ dependencies = [
   "fastapi>=0.115.8",
   "httpx>=0.28.1",
   "pydantic-settings>=2.7.1",
-  "psycopg[binary]>=3.2.3",
+  "psycopg>=3.2.3",
   "redis>=5.2.1",
   "rq>=2.1.0",
   "sqlalchemy>=2.0.36",
-  "uvicorn[standard]>=0.34.0",
+  "uvicorn>=0.34.0",
 ]
 
 [project.optional-dependencies]

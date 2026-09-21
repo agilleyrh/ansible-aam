@@ -25,10 +25,10 @@ AAM lets you:
 
 ## Current stack
 
-- `backend/`: FastAPI API, SQLAlchemy models, Alembic migrations, queue worker, scheduler, policy engine, and AAP connectors.
-- `frontend/`: React 18 + Vite + **PatternFly React 6** console.
-- `deploy/docker-compose.yml`: local/lab Docker Compose stack.
-- `deploy/podman/`: Podman Compose + Quadlet units for RHEL.
+- `backend/`: FastAPI API on UBI Python, SQLAlchemy, Alembic, RQ worker, scheduler, and AAP connectors. PostgreSQL uses the system `libpq`.
+- `frontend/`: React 18 + Vite + **PatternFly React 6**, served by the UBI nginx 1.24 image.
+- `deploy/docker-compose.yml`: local/lab stack using the sclorg PostgreSQL 16 and Redis 7 images.
+- `deploy/podman/`: Podman Compose + Quadlet units for RHEL, with the same database images.
 - `deploy/openshift/`: **installable** OpenShift / MicroShift Kustomize manifests and a laptop deploy script.
 - `deploy/operator/`: optional future Operator SDK scaffold. It does not install the hub by itself.
 - `docs/architecture.md`: product and integration design.
@@ -163,7 +163,7 @@ oc delete -k deploy/openshift/overlays/microshift
 oc apply -k deploy/openshift/base
 ```
 
-The base Route has no host so OpenShift can assign one. Postgres and Redis ServiceAccounts are bound to `anyuid` SCC.
+The base Route has no host so OpenShift can assign one. Postgres uses the sclorg image and its ServiceAccount is bound to the `anyuid` SCC. Redis uses the matching sclorg image and runs under the restricted SCC.
 
 ### 3. Docker Compose or Podman
 
