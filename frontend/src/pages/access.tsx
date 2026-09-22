@@ -21,7 +21,6 @@ import { Table, Tbody, Td, Th, Thead, Tr } from "@patternfly/react-table";
 
 import { api } from "../api";
 import { useAuth } from "../auth";
-import { PageHeader } from "../components/page-header";
 import type { AccessDirectory, EnvironmentSummary } from "../types";
 
 const emptyProvider = {
@@ -135,13 +134,6 @@ export function AccessPage() {
 
   return (
     <Stack hasGutter>
-      <StackItem>
-        <PageHeader
-          section="Administration"
-          title="Access"
-          description="System roles cover the whole hub. Environment roles delegate administration, operation, or read-only access to one estate."
-        />
-      </StackItem>
       {error ? (
         <StackItem>
           <Alert variant="danger" isInline title={error} />

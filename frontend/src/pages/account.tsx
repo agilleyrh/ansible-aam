@@ -18,7 +18,6 @@ import {
 } from "@patternfly/react-core";
 
 import { api } from "../api";
-import { PageHeader } from "../components/page-header";
 import { useAuth } from "../auth";
 import type { EnvironmentSummary } from "../types";
 
@@ -43,13 +42,6 @@ export function AccountPage() {
 
   return (
     <Stack hasGutter>
-      <StackItem>
-        <PageHeader
-          section="Account"
-          title="Your account"
-          description="Review the identity you signed in with, the roles assigned to you, and change your local password."
-        />
-      </StackItem>
       <StackItem>
         <Card>
           <CardHeader>

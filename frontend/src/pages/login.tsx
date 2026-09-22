@@ -17,7 +17,7 @@ import {
 } from "@patternfly/react-core";
 
 import { api } from "../api";
-import { AnsibleLogo } from "../components/ansible-logo";
+import { AapLogo } from "../components/aap-logo";
 import { useAuth } from "../auth";
 import type { AuthProvider } from "../types";
 
@@ -96,7 +96,7 @@ export function SignInPage() {
       textContent="Local accounts stay available. OpenID Connect, LDAP, and Active Directory can be added by a system administrator."
     >
       <div className="aam-login-mark">
-        <AnsibleLogo />
+        <AapLogo />
       </div>
       {error ? (
         <Alert variant="danger" title={error} isInline style={{ marginBottom: "1rem" }} />

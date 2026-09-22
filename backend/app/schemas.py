@@ -49,7 +49,7 @@ class EnvironmentBase(BaseModel):
     orchestrator_client_secret: str | None = None
     orchestrator_access_token: str | None = None
     verify_ssl: bool = True
-    sync_interval_minutes: int = 5
+    sync_interval_minutes: int = Field(default=5, ge=1, le=1440)
     capabilities: dict[str, Any] = Field(default_factory=dict)
     service_paths: dict[str, Any] = Field(default_factory=dict)
 
@@ -92,7 +92,7 @@ class EnvironmentUpdate(BaseModel):
     orchestrator_client_secret: str | None = None
     orchestrator_access_token: str | None = None
     verify_ssl: bool | None = None
-    sync_interval_minutes: int | None = None
+    sync_interval_minutes: int | None = Field(default=None, ge=1, le=1440)
     is_managed: bool | None = None
     capabilities: dict[str, Any] | None = None
     service_paths: dict[str, Any] | None = None
@@ -113,6 +113,7 @@ class EnvironmentSummary(BaseModel):
     infrastructure: dict[str, Any] = Field(default_factory=dict)
     status: str
     is_managed: bool = True
+    sync_interval_minutes: int = 5
     platform_version: str | None
     last_synced_at: datetime | None
     last_sync_error: str | None

@@ -280,14 +280,9 @@ export function MonitoringPage() {
           title="Fleet monitoring and service posture"
           description="Review Ansible Automation Platform and Automation Orchestrator as separate estates. Warnings mean a service is reachable but incomplete or unhealthy; critical means collection failed."
           actions={
-            <>
-              <LinkButton to="/activity" variant="secondary">
-                View activity stream
-              </LinkButton>
-              <LinkButton to="/environments" variant="primary">
-                Open environment registry
-              </LinkButton>
-            </>
+            <LinkButton to="/environments" variant="primary">
+              Open environment registry
+            </LinkButton>
           }
         />
       </StackItem>

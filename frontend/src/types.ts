@@ -17,6 +17,7 @@ export type EnvironmentSummary = {
   infrastructure: Record<string, unknown>;
   status: string;
   is_managed?: boolean;
+  sync_interval_minutes: number;
   platform_version: string | null;
   last_synced_at: string | null;
   last_sync_error: string | null;

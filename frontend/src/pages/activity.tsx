@@ -93,7 +93,7 @@ export function ActivityPage() {
     <Stack hasGutter>
       <StackItem>
         <PageHeader
-          section="Activity"
+          section="Monitoring"
           title="Fleet activity stream"
           description="Review syncs, remote launches, repository syncs, activation changes, and Automation Orchestrator workflow executions across AAP and Orchestrator estates."
           actions={
