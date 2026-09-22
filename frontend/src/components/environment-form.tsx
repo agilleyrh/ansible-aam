@@ -258,6 +258,31 @@ export function EnvironmentForm({
   const [showMetadata, setShowMetadata] = useState(mode === "edit");
   const [showAdvanced, setShowAdvanced] = useState(mode === "edit");
   const [localError, setLocalError] = useState<string | null>(null);
+  const [step, setStep] = useState(0);
+  const registrationSteps = ["Product", "Footprint", "Connection", "Review"];
+
+  function showStep(index: number) {
+    return mode !== "create" || step === index;
+  }
+
+  function continueRegistration() {
+    setLocalError(null);
+    if (step === 0 && (!form.name.trim() || !form.slug.trim())) {
+      setLocalError("Enter a display name. The slug is filled in from that name.");
+      return;
+    }
+    if (step === 2) {
+      if (form.kind === "orchestrator" && !form.orchestrator_url.trim()) {
+        setLocalError("Enter the Automation Orchestrator URL.");
+        return;
+      }
+      if (form.kind !== "orchestrator" && !form.gateway_url.trim()) {
+        setLocalError("Enter the platform gateway URL.");
+        return;
+      }
+    }
+    setStep((current) => Math.min(current + 1, registrationSteps.length - 1));
+  }
 
   useEffect(() => {
     setForm(buildInitialState(initialValue));
@@ -390,6 +415,15 @@ export function EnvironmentForm({
           </StackItem>
         ) : null}
 
+        {mode === "create" ? (
+          <StackItem>
+            <Content component="small" className="aam-muted">
+              Step {step + 1} of {registrationSteps.length}: {registrationSteps[step]}. Registering this estate makes you its environment administrator.
+            </Content>
+          </StackItem>
+        ) : null}
+
+        {showStep(0) ? (
         <FormSection
           title={mode === "create" ? "Registration basics" : "Identity and collection cadence"}
           description={
@@ -479,11 +513,15 @@ export function EnvironmentForm({
             </GridItem>
           </Grid>
         </FormSection>
+        ) : null}
 
+        {mode !== "create" ? (
         <StackItem>
           <Divider />
         </StackItem>
+        ) : null}
 
+        {showStep(1) ? (
         <FormSection
           title="Infrastructure footprint"
           description="Tell the hub where this estate runs so operators can filter and govern Podman, OpenShift, and cloud environments together."
@@ -553,11 +591,16 @@ export function EnvironmentForm({
             </GridItem>
           </Grid>
         </FormSection>
+        ) : null}
 
+        {mode !== "create" ? (
         <StackItem>
           <Divider />
         </StackItem>
+        ) : null}
 
+        {showStep(2) ? (
+        <>
         <FormSection
           title={form.kind === "orchestrator" ? "Orchestrator endpoint" : "Service endpoints"}
           description={
@@ -714,10 +757,13 @@ export function EnvironmentForm({
             </GridItem>
           </Grid>
         </FormSection>
+        </>
+        ) : null}
 
+        {mode !== "create" ? (
         <StackItem>
           <ExpandableSection
-            toggleText={mode === "create" ? "Optional ownership and grouping" : "Registry metadata"}
+            toggleText="Registry metadata"
             isExpanded={showMetadata}
             onToggle={(_, expanded) => setShowMetadata(expanded)}
           >
@@ -759,6 +805,7 @@ export function EnvironmentForm({
             </Grid>
           </ExpandableSection>
         </StackItem>
+        ) : null}
 
         {showAdvancedSettings ? (
           <>
@@ -1010,7 +1057,17 @@ export function EnvironmentForm({
           </StackItem>
         )}
 
-        {showSyncAfterSave ? (
+        {mode === "create" && step === 3 ? (
+          <StackItem>
+            <Content component="p">
+              {form.name} will be registered as {form.kind === "orchestrator" ? "an Automation Orchestrator" : "an Ansible Automation Platform"} estate
+              {form.kind === "orchestrator" ? ` at ${form.orchestrator_url || "the URL you enter"}` : ` at ${form.gateway_url || "the gateway URL you enter"}`}.
+              It runs on {form.deployment_type}. You will be the environment administrator, and can delegate environment roles afterward.
+            </Content>
+          </StackItem>
+        ) : null}
+
+        {showSyncAfterSave && (mode !== "create" || step === 3) ? (
           <StackItem>
             <Checkbox
               id={`${fieldPrefix}-sync-after-save`}
@@ -1023,9 +1080,20 @@ export function EnvironmentForm({
 
         <StackItem>
           <ActionGroup>
-            <Button type="submit" variant="primary" isLoading={busy} isDisabled={busy}>
-              {busy ? "Saving..." : submitLabel}
-            </Button>
+            {mode === "create" && step > 0 ? (
+              <Button type="button" variant="link" isDisabled={busy} onClick={() => setStep((current) => Math.max(current - 1, 0))}>
+                Back
+              </Button>
+            ) : null}
+            {mode === "create" && step < registrationSteps.length - 1 ? (
+              <Button type="button" variant="primary" isDisabled={busy} onClick={continueRegistration}>
+                Continue
+              </Button>
+            ) : (
+              <Button type="submit" variant="primary" isLoading={busy} isDisabled={busy}>
+                {busy ? "Saving..." : submitLabel}
+              </Button>
+            )}
           </ActionGroup>
         </StackItem>
       </Stack>

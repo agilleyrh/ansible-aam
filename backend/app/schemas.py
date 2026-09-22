@@ -93,6 +93,7 @@ class EnvironmentUpdate(BaseModel):
     orchestrator_access_token: str | None = None
     verify_ssl: bool | None = None
     sync_interval_minutes: int | None = None
+    is_managed: bool | None = None
     capabilities: dict[str, Any] | None = None
     service_paths: dict[str, Any] | None = None
 
@@ -111,6 +112,7 @@ class EnvironmentSummary(BaseModel):
     deployment_type: str = "podman"
     infrastructure: dict[str, Any] = Field(default_factory=dict)
     status: str
+    is_managed: bool = True
     platform_version: str | None
     last_synced_at: datetime | None
     last_sync_error: str | None

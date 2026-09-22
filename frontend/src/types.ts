@@ -16,6 +16,7 @@ export type EnvironmentSummary = {
   deployment_type: DeploymentType;
   infrastructure: Record<string, unknown>;
   status: string;
+  is_managed?: boolean;
   platform_version: string | null;
   last_synced_at: string | null;
   last_sync_error: string | null;
@@ -88,6 +89,7 @@ export type EnvironmentMutationPayload = {
   orchestrator_access_token?: string | null;
   verify_ssl: boolean;
   sync_interval_minutes: number;
+  is_managed?: boolean;
   capabilities: Record<string, unknown>;
   service_paths: Record<string, unknown>;
 };

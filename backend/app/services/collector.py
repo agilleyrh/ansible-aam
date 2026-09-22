@@ -209,6 +209,8 @@ def enqueue_due_syncs() -> list[str]:
         environments = db.scalars(select(ManagedEnvironment)).all()
         now = datetime.now(timezone.utc)
         for environment in environments:
+            if not environment.is_managed:
+                continue
             should_sync = False
             if environment.last_synced_at is None:
                 should_sync = True

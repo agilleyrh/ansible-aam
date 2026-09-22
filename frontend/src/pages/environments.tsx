@@ -149,7 +149,7 @@ export function EnvironmentsPage() {
         <PageHeader
           section="Environments"
           title="Environment registry"
-          description="Register Ansible Automation Platform and Automation Orchestrator as separate estates. Each listing has its own infrastructure, credentials, health, and inventory."
+          description="Register Ansible Automation Platform and Automation Orchestrator as separate estates. Registration is a short workflow: choose the product, record where it runs, then connect it. Deactivate pauses collection. De-register removes the listing and leaves the remote estate in place."
           actions={
             <>
               <LinkButton to="/monitoring" variant="secondary">
@@ -279,7 +279,12 @@ export function EnvironmentsPage() {
                           <StackItem>
                             <Label color={environmentKind(environment) === "orchestrator" ? "purple" : "blue"} isCompact>
                               {environmentKindLabel(environment)}
-                            </Label>
+                            </Label>{" "}
+                            {environment.is_managed === false ? (
+                              <Label color="grey" isCompact>
+                                Inactive
+                              </Label>
+                            ) : null}
                           </StackItem>
                           <StackItem>
                             <Content component="small" className="aam-muted">
@@ -391,8 +396,7 @@ export function EnvironmentsPage() {
           <Stack hasGutter>
             <StackItem>
               <Content component="p" className="aam-muted">
-                Start with the connection, sync cadence, collector credentials, and infrastructure footprint. Deeper
-                platform declarations stay available after the environment is created.
+                Choose the product, record where it runs, then connect it. Ansible Automation Platform and Automation Orchestrator are registered separately. Deeper platform declarations stay available after registration.
               </Content>
             </StackItem>
             <StackItem>
