@@ -3,6 +3,18 @@ from types import SimpleNamespace
 from app.services.policies import _evaluate_rule, _scope_matches, is_remediable
 
 
+def test_tls_and_collection_interval_apply_to_either_product():
+    tls = SimpleNamespace(rule={"type": "require_tls_verification"}, scope={})
+    interval = SimpleNamespace(rule={"type": "max_sync_interval_minutes", "threshold": 60}, scope={})
+    environment = SimpleNamespace(verify_ssl=False, sync_interval_minutes=120, summary={}, capabilities={})
+    assert _evaluate_rule(tls, environment)[0] == "noncompliant"
+    assert _evaluate_rule(interval, environment)[0] == "noncompliant"
+    environment.verify_ssl = True
+    environment.sync_interval_minutes = 15
+    assert _evaluate_rule(tls, environment)[0] == "compliant"
+    assert _evaluate_rule(interval, environment)[0] == "compliant"
+
+
 def test_require_version_prefix_matches():
     policy = SimpleNamespace(rule={"type": "require_version_prefix", "prefix": "2.7"}, scope={})
     environment = SimpleNamespace(

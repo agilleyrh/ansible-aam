@@ -17,6 +17,8 @@ import type { PolicyCreatePayload } from "../types";
 
 type RuleType =
   | "require_version_prefix"
+  | "require_tls_verification"
+  | "max_sync_interval_minutes"
   | "max_sync_age_minutes"
   | "max_failed_jobs"
   | "max_failed_executions"
@@ -34,7 +36,17 @@ const RULE_OPTIONS: Array<{ value: RuleType; label: string; help: string }> = [
   {
     value: "require_version_prefix",
     label: "AAP version prefix",
-    help: "Require the collected platform version to start with a prefix such as 2.5 or 2.7.",
+    help: "Require the collected Ansible Automation Platform version to start with a prefix such as 2.7.",
+  },
+  {
+    value: "require_tls_verification",
+    label: "TLS verification required",
+    help: "The estate must verify TLS certificates. This applies to Ansible Automation Platform and Automation Orchestrator.",
+  },
+  {
+    value: "max_sync_interval_minutes",
+    label: "Maximum collection interval",
+    help: "The estate refresh interval must be this many minutes or less.",
   },
   {
     value: "max_failed_jobs",
@@ -109,6 +121,9 @@ function buildRule(
   if (ruleType === "require_version_prefix") {
     return { type: ruleType, prefix: prefix.trim() };
   }
+  if (ruleType === "require_tls_verification") {
+    return { type: ruleType };
+  }
   if (ruleType === "component_enabled") {
     return { type: ruleType, service };
   }
@@ -141,6 +156,7 @@ export function PolicyForm({ busy, onSubmit }: Props) {
   const [resourceImage, setResourceImage] = useState("");
   const [remediate, setRemediate] = useState(true);
   const [tags, setTags] = useState("");
+  const [appliesTo, setAppliesTo] = useState("all");
   const [pushToFleet, setPushToFleet] = useState(true);
 
   const selectedRule = RULE_OPTIONS.find((option) => option.value === ruleType);
@@ -156,7 +172,10 @@ export function PolicyForm({ busy, onSubmit }: Props) {
       description: description.trim(),
       severity,
       enabled: true,
-      scope: tagList.length ? { tags: tagList } : {},
+      scope: {
+        ...(appliesTo === "all" ? {} : { kind: appliesTo }),
+        ...(tagList.length ? { tags: tagList } : {}),
+      },
       rule: buildRule(
         ruleType,
         threshold,
@@ -282,6 +301,7 @@ export function PolicyForm({ busy, onSubmit }: Props) {
           </>
         ) : null}
         {ruleType !== "require_version_prefix" &&
+        ruleType !== "require_tls_verification" &&
         ruleType !== "component_enabled" &&
         ruleType !== "controller_setting" &&
         ruleType !== "named_resource_present" ? (
@@ -292,14 +312,23 @@ export function PolicyForm({ busy, onSubmit }: Props) {
           </StackItem>
         ) : null}
         <StackItem>
-          <FormGroup label="Scope tags" fieldId="policy-tags">
+          <FormGroup label="Applies to" fieldId="policy-applies-to">
+            <FormSelect id="policy-applies-to" value={appliesTo} onChange={(_, value) => setAppliesTo(value)}>
+              <FormSelectOption value="all" label="Every registered estate" />
+              <FormSelectOption value="aap" label="Ansible Automation Platform only" />
+              <FormSelectOption value="orchestrator" label="Automation Orchestrator only" />
+            </FormSelect>
+          </FormGroup>
+        </StackItem>
+        <StackItem>
+          <FormGroup label="Limit to tags" fieldId="policy-tags">
             <TextInput
               id="policy-tags"
               value={tags}
               onChange={(_, value) => setTags(value)}
               placeholder="Leave blank to apply to every environment"
             />
-            <p className="aam-form-help">Comma-separated environment tags. Empty means all registered AAP instances.</p>
+            <p className="aam-form-help">Optional. Leave blank to include every estate of the product selected above.</p>
           </FormGroup>
         </StackItem>
         {ruleType === "controller_setting" || ruleType === "named_resource_present" ? (

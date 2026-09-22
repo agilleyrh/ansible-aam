@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ManagedEnvironment, PolicyDefinition
 from app.services.collector import record_action
-from app.services.connectors import AAPConnector
+from app.services.hub_preferences import open_aap_connector
 from app.services.policies import evaluate_fleet, is_remediable, _evaluate_rule, _scope_matches
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ async def remediate_fleet(db: Session, *, policy_id: str, requested_by: str) -> 
             skipped += 1
             details.append({"environment": environment.name, "status": "skipped", "message": message})
             continue
-        connector = AAPConnector(environment)
+        connector = open_aap_connector(environment, db)
         try:
             response = await connector.apply_config_remediation(policy.rule)
             record_action(

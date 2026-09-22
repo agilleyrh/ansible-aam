@@ -182,9 +182,17 @@ def merge_service_paths(overrides: dict[str, Any] | None) -> dict[str, dict[str,
 
 
 class AAPConnector:
-    def __init__(self, environment: ManagedEnvironment, *, forwarded_headers: dict[str, str] | None = None):
+    def __init__(
+        self,
+        environment: ManagedEnvironment,
+        *,
+        forwarded_headers: dict[str, str] | None = None,
+        request_timeout_seconds: int | None = None,
+    ):
         self.environment = environment
         self.settings = get_settings()
+        if request_timeout_seconds is not None:
+            self.settings = self.settings.model_copy(update={"request_timeout_seconds": request_timeout_seconds})
         self.service_paths = merge_service_paths(environment.service_paths)
         self._forwarded_headers = forwarded_headers or {}
         self._oauth2_token: str | None = None

@@ -22,6 +22,7 @@ from app.security import (
     resolve_user,
 )
 from app.services.access import ENVIRONMENT_ROLES, SYSTEM_ROLES, load_profile
+from app.services.hub_preferences import local_login_allowed
 from app.services.external_auth import (
     apply_group_mappings,
     begin_oidc,
@@ -77,8 +78,11 @@ class AssignmentWrite(BaseModel):
     principal_id: str
 
 
-def _set_session(response: Response, request: Request, user: LocalUser) -> str:
-    token = issue_session_token(user.id, user.username)
+def _set_session(response: Response, request: Request, user: LocalUser, db: Session) -> str:
+    from app.services.hub_preferences import load_hub_preferences
+
+    ttl = load_hub_preferences(db).session_ttl_minutes
+    token = issue_session_token(user.id, user.username, ttl_minutes=ttl)
     forwarded = (request.headers.get("x-forwarded-proto") or request.url.scheme).split(",")[0].strip()
     response.set_cookie(
         SESSION_COOKIE,
@@ -86,7 +90,7 @@ def _set_session(response: Response, request: Request, user: LocalUser) -> str:
         httponly=True,
         samesite="lax",
         secure=forwarded == "https",
-        max_age=get_settings().session_ttl_minutes * 60,
+        max_age=ttl * 60,
         path="/",
     )
     return token
@@ -103,21 +107,20 @@ def _redirect_base(request: Request) -> str:
 def list_public_providers(db: Session = Depends(get_db)) -> dict:
     providers = db.scalars(select(IdentityProvider).where(IdentityProvider.enabled.is_(True)).order_by(IdentityProvider.name)).all()
     return {
-        "local_login_enabled": get_settings().local_login_enabled,
+        "local_login_enabled": local_login_allowed(db),
         "providers": [public_provider(provider) for provider in providers],
     }
 
 
 @router.post("/auth/login")
 def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)) -> dict:
-    if not get_settings().local_login_enabled:
-        builtin = db.scalars(select(LocalUser).where(LocalUser.username == payload.username.strip())).one_or_none()
-        if builtin is None or not builtin.is_builtin:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Local login is disabled.")
+    candidate = db.scalars(select(LocalUser).where(LocalUser.username == payload.username.strip())).one_or_none()
+    if not local_login_allowed(db, builtin=bool(candidate and candidate.is_builtin)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Local login is disabled.")
     user = db.scalars(select(LocalUser).where(LocalUser.username == payload.username.strip())).one_or_none()
     if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password.")
-    token = _set_session(response, request, user)
+    token = _set_session(response, request, user, db)
     profile = load_profile(db, user)
     body = profile_context(profile).model_dump()
     body["access_token"] = token
@@ -143,7 +146,7 @@ def external_login(payload: ExternalLoginRequest, request: Request, response: Re
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Directory login failed: {exc}") from exc
-    token = _set_session(response, request, user)
+    token = _set_session(response, request, user, db)
     body = profile_context(load_profile(db, user)).model_dump()
     body["access_token"] = token
     return body
@@ -209,7 +212,7 @@ def oidc_callback(
     if not target.startswith("/"):
         target = "/"
     redirect = RedirectResponse(target, status_code=status.HTTP_302_FOUND)
-    _set_session(redirect, request, user)
+    _set_session(redirect, request, user, db)
     return redirect
 
 
@@ -334,7 +337,7 @@ def update_user(
         _set_groups(db, user, payload.groups)
     db.commit()
     if self_edit and payload.password:
-        _set_session(response, request, user)
+        _set_session(response, request, user, db)
     return {"id": user.id, "username": user.username}
 
 

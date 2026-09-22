@@ -255,6 +255,20 @@ class RoleAssignment(Base, TimestampedMixin):
     principal_id: Mapped[str] = mapped_column(String(36), index=True)
 
 
+class HubPreference(Base, TimestampedMixin):
+    """Singleton row of settings an administrator can change without a redeploy."""
+
+    __tablename__ = "hub_preferences"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default="default")
+    default_sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=5)
+    session_ttl_minutes: Mapped[int] = mapped_column(Integer, default=480)
+    search_result_limit: Mapped[int] = mapped_column(Integer, default=25)
+    request_timeout_seconds: Mapped[int] = mapped_column(Integer, default=15)
+    scheduler_interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    local_login_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class ActionAudit(Base, TimestampedMixin):
     __tablename__ = "action_audits"
 

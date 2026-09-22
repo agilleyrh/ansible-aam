@@ -25,6 +25,7 @@ import {
   Title,
 } from "@patternfly/react-core";
 
+import { api } from "../api";
 import { buildCapabilities, parseCapabilityProfile, type ManagementMode } from "../capabilities";
 import type { DeploymentType, EnvironmentAuthMode, EnvironmentDetail, EnvironmentKind, EnvironmentMutationPayload } from "../types";
 
@@ -291,6 +292,17 @@ export function EnvironmentForm({
     setShowMetadata(mode === "edit");
     setShowAdvanced(mode === "edit");
     setLocalError(null);
+    if (mode !== "create") {
+      return;
+    }
+    const controller = new AbortController();
+    api
+      .hubPreferences(controller.signal)
+      .then((prefs) => {
+        setForm((current) => ({ ...current, sync_interval_minutes: String(prefs.default_sync_interval_minutes) }));
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
   }, [initialValue, mode]);
 
   function updateField<K extends keyof FormState>(field: K, value: FormState[K]) {

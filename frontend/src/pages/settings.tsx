@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import {
   Alert,
   Bullseye,
   Button,
+  Checkbox,
   Card,
   CardBody,
   CardHeader,
@@ -11,6 +12,9 @@ import {
   DescriptionListDescription,
   DescriptionListGroup,
   DescriptionListTerm,
+  ExpandableSection,
+  Form,
+  FormGroup,
   Gallery,
   Grid,
   GridItem,
@@ -31,7 +35,7 @@ import { useAuth } from "../auth";
 import { EmptyState } from "../components/empty-state";
 import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
-import type { EnvironmentSummary, RuntimeSettings } from "../types";
+import type { EnvironmentSummary, HubPreferences, RuntimeSettings } from "../types";
 import { environmentKindLabel, formatDateTime } from "../utils";
 
 export function SettingsLayout() {
@@ -58,7 +62,7 @@ export function SettingsLayout() {
         <PageHeader
           section="Settings"
           title="Settings"
-          description="Manage your account, who can use this hub, and how often each Ansible Automation Platform and Automation Orchestrator estate is refreshed."
+          description="Account is your sign-in. Access decides who can use the hub. Application settings are the values you can change for this hub."
         />
       </StackItem>
       <StackItem>
@@ -81,7 +85,166 @@ function canEditRefresh(user: ReturnType<typeof useAuth>["user"], environmentId:
   return roles.includes("environment-admin") || roles.includes("environment-user");
 }
 
-function CollectionRefresh() {
+function HubPreferencesForm({ onSaved }: { onSaved?: () => void }) {
+  const { user } = useAuth();
+  const canEdit = user?.system_roles?.includes("admin") ?? false;
+  const [prefs, setPrefs] = useState<HubPreferences | null>(null);
+  const [applyToAll, setApplyToAll] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api
+      .hubPreferences(controller.signal)
+      .then(setPrefs)
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : "Application settings could not be loaded.");
+        }
+      });
+    return () => controller.abort();
+  }, []);
+
+  function update<K extends keyof HubPreferences>(field: K, value: HubPreferences[K]) {
+    setPrefs((current) => (current ? { ...current, [field]: value } : current));
+  }
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!prefs) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const saved = await api.updateHubPreferences({ ...prefs, apply_sync_interval_to_all: applyToAll });
+      setPrefs(saved);
+      setNotice(applyToAll ? "Saved. Every registered estate now uses this collection interval." : "Application settings saved.");
+      setApplyToAll(false);
+      onSaved?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Application settings could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <Stack>
+          <StackItem>
+            <Title headingLevel="h2" size="lg">
+              Application settings
+            </Title>
+          </StackItem>
+          <StackItem>
+            <Content component="p" className="aam-muted">
+              These values control this hub. Save them here. They apply to new registrations and to how the hub talks to Ansible Automation Platform and Automation Orchestrator.
+            </Content>
+          </StackItem>
+        </Stack>
+      </CardHeader>
+      <CardBody>
+        {error ? <Alert isInline variant="danger" title={error} /> : null}
+        {notice ? <Alert isInline variant="success" title={notice} /> : null}
+        {!prefs ? (
+          <p className="aam-muted">Loading application settings...</p>
+        ) : (
+          <Form onSubmit={save}>
+            <FormGroup label="Default collection refresh" fieldId="pref-sync">
+              <TextInput
+                id="pref-sync"
+                type="number"
+                min={1}
+                max={1440}
+                value={String(prefs.default_sync_interval_minutes)}
+                isDisabled={!canEdit || busy}
+                onChange={(_event, value) => update("default_sync_interval_minutes", Number.parseInt(value, 10) || 0)}
+              />
+              <p className="aam-form-help">Minutes. New estates start here. Use the checkbox to apply it to estates that are already registered.</p>
+            </FormGroup>
+            <Checkbox
+              id="pref-apply-all"
+              label="Apply this refresh interval to every registered estate"
+              isChecked={applyToAll}
+              isDisabled={!canEdit || busy}
+              onChange={(_event, checked) => setApplyToAll(checked)}
+            />
+            <FormGroup label="Session length" fieldId="pref-session">
+              <TextInput
+                id="pref-session"
+                type="number"
+                min={15}
+                max={10080}
+                value={String(prefs.session_ttl_minutes)}
+                isDisabled={!canEdit || busy}
+                onChange={(_event, value) => update("session_ttl_minutes", Number.parseInt(value, 10) || 0)}
+              />
+              <p className="aam-form-help">Minutes before a new sign-in expires. Current sessions keep the length they were issued with.</p>
+            </FormGroup>
+            <FormGroup label="Search results" fieldId="pref-search">
+              <TextInput
+                id="pref-search"
+                type="number"
+                min={5}
+                max={200}
+                value={String(prefs.search_result_limit)}
+                isDisabled={!canEdit || busy}
+                onChange={(_event, value) => update("search_result_limit", Number.parseInt(value, 10) || 0)}
+              />
+              <p className="aam-form-help">Maximum inventory matches returned by Search.</p>
+            </FormGroup>
+            <FormGroup label="Remote request timeout" fieldId="pref-timeout">
+              <TextInput
+                id="pref-timeout"
+                type="number"
+                min={5}
+                max={120}
+                value={String(prefs.request_timeout_seconds)}
+                isDisabled={!canEdit || busy}
+                onChange={(_event, value) => update("request_timeout_seconds", Number.parseInt(value, 10) || 0)}
+              />
+              <p className="aam-form-help">Seconds to wait for Ansible Automation Platform or Automation Orchestrator.</p>
+            </FormGroup>
+            <FormGroup label="Scheduler check" fieldId="pref-scheduler">
+              <TextInput
+                id="pref-scheduler"
+                type="number"
+                min={15}
+                max={300}
+                value={String(prefs.scheduler_interval_seconds)}
+                isDisabled={!canEdit || busy}
+                onChange={(_event, value) => update("scheduler_interval_seconds", Number.parseInt(value, 10) || 0)}
+              />
+              <p className="aam-form-help">Seconds between checks for estates that are due to be collected.</p>
+            </FormGroup>
+            <Checkbox
+              id="pref-local-login"
+              label="Allow local accounts other than the built-in administrator"
+              description={prefs.local_login_locked ? "The running service has turned local sign-in off. The built-in administrator can still sign in." : "Directory and OpenID Connect accounts are unaffected."}
+              isChecked={prefs.local_login_enabled && !prefs.local_login_locked}
+              isDisabled={!canEdit || busy || prefs.local_login_locked}
+              onChange={(_event, checked) => update("local_login_enabled", checked)}
+            />
+            {canEdit ? (
+              <Button type="submit" variant="primary" isLoading={busy} isDisabled={busy}>
+                Save application settings
+              </Button>
+            ) : (
+              <p className="aam-muted">A system administrator can change these settings.</p>
+            )}
+          </Form>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function CollectionRefresh({ refreshToken = 0 }: { refreshToken?: number }) {
   const { user } = useAuth();
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -107,7 +270,7 @@ function CollectionRefresh() {
         }
       });
     return () => controller.abort();
-  }, []);
+  }, [refreshToken]);
 
   async function save(environment: EnvironmentSummary) {
     const raw = drafts[environment.id] ?? String(environment.sync_interval_minutes);
@@ -222,6 +385,7 @@ function CollectionRefresh() {
 export function ApplicationSettingsPage() {
   const { user } = useAuth();
   const isSystemAdmin = user?.system_roles?.includes("admin") ?? false;
+  const [collectionRefreshToken, setCollectionRefreshToken] = useState(0);
   const [settings, setSettings] = useState<RuntimeSettings | null>(null);
   const [loading, setLoading] = useState(isSystemAdmin);
   const [error, setError] = useState<string | null>(null);
@@ -254,7 +418,10 @@ export function ApplicationSettingsPage() {
   return (
     <Stack hasGutter>
       <StackItem>
-        <CollectionRefresh />
+        <HubPreferencesForm onSaved={() => setCollectionRefreshToken((current) => current + 1)} />
+      </StackItem>
+      <StackItem>
+        <CollectionRefresh refreshToken={collectionRefreshToken} />
       </StackItem>
 
       {isSystemAdmin && loading && !settings ? (
@@ -274,7 +441,14 @@ export function ApplicationSettingsPage() {
       ) : null}
 
       {settings ? (
-        <>
+        <StackItem>
+          <ExpandableSection toggleText="Deployment profile" displaySize="lg">
+            <Stack hasGutter>
+              <StackItem>
+                <Content component="p" className="aam-muted">
+                  These values come from the running service. Change them in the deployment configuration, not here.
+                </Content>
+              </StackItem>
       {error ? (
         <StackItem>
           <Alert isInline variant="warning" title={`Loaded with partial data: ${error}`} />
@@ -285,8 +459,6 @@ export function ApplicationSettingsPage() {
         <Gallery hasGutter minWidths={{ default: "180px", lg: "220px" }}>
           <StatCard label="Mode" value={settings.environment} detail="Backend runtime environment" />
           <StatCard label="API prefix" value={settings.api_prefix} detail="Gateway path mounted by the API service" />
-          <StatCard label="Default sync" value={`${settings.default_sync_interval_minutes}m`} detail="Scheduler fallback interval" />
-          <StatCard label="Search limit" value={settings.search_result_limit} detail="Results returned per search request" />
         </Gallery>
       </StackItem>
 
@@ -346,8 +518,8 @@ export function ApplicationSettingsPage() {
               <CardBody>
                 <DescriptionList isCompact isHorizontal columnModifier={{ default: "1Col" }}>
                   <DescriptionListGroup>
-                    <DescriptionListTerm>Request timeout</DescriptionListTerm>
-                    <DescriptionListDescription>{settings.request_timeout_seconds} seconds</DescriptionListDescription>
+                    <DescriptionListTerm>Process request timeout</DescriptionListTerm>
+                    <DescriptionListDescription>{settings.request_timeout_seconds} seconds. Remote calls use the saved application setting.</DescriptionListDescription>
                   </DescriptionListGroup>
                   <DescriptionListGroup>
                     <DescriptionListTerm>Gateway trusted proxy</DescriptionListTerm>
@@ -403,7 +575,9 @@ export function ApplicationSettingsPage() {
           </GridItem>
         </Grid>
       </StackItem>
-        </>
+            </Stack>
+          </ExpandableSection>
+        </StackItem>
       ) : null}
     </Stack>
   );

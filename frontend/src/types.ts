@@ -338,6 +338,16 @@ export type SyncRequestResponse = {
   status: string;
 };
 
+export type HubPreferences = {
+  default_sync_interval_minutes: number;
+  session_ttl_minutes: number;
+  search_result_limit: number;
+  request_timeout_seconds: number;
+  scheduler_interval_seconds: number;
+  local_login_enabled: boolean;
+  local_login_locked: boolean;
+};
+
 export type RuntimeSettings = {
   environment: string;
   api_prefix: string;

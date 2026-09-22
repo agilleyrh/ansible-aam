@@ -58,12 +58,12 @@ def _sign(body: str) -> str:
     return hmac.new(secret, body.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def issue_session_token(user_id: str, username: str) -> str:
+def issue_session_token(user_id: str, username: str, *, ttl_minutes: int | None = None) -> str:
     import base64
     import json
 
     now = datetime.now(timezone.utc)
-    expires = now + timedelta(minutes=get_settings().session_ttl_minutes)
+    expires = now + timedelta(minutes=ttl_minutes if ttl_minutes is not None else get_settings().session_ttl_minutes)
     payload = {"sub": user_id, "username": username, "iat": int(now.timestamp()), "exp": int(expires.timestamp())}
     body = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii").rstrip("=")
     return f"{body}.{_sign(body)}"
