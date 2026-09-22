@@ -4,6 +4,7 @@ WORKDIR /opt/app-root/src
 
 COPY --chown=1001:0 package.json package-lock.json tsconfig.json tsconfig.node.json vite.config.ts ./
 COPY --chown=1001:0 index.html ./
+COPY --chown=1001:0 public ./public
 COPY --chown=1001:0 src ./src
 
 RUN npm ci && npm run build
