@@ -213,6 +213,11 @@ export function DashboardPage() {
           <StatCard label="Healthy" value={data.healthy_count} detail="No current collection or policy issues" />
           <StatCard label="Warning" value={data.warning_count} detail="Needs review or follow-up" />
           <StatCard label="Critical" value={data.critical_count} detail="Sync or service failures detected" />
+          <StatCard
+            label="Managed nodes"
+            value={sumServiceMetric(data.environment_summaries, "controller", "host_count")}
+            detail="Controller hosts collected from Ansible Automation Platform"
+          />
         </Gallery>
       </StackItem>
 
@@ -297,7 +302,7 @@ export function DashboardPage() {
                     <Stack>
                       <StackItem>
                         <Title headingLevel="h2" size="lg">
-                          Compliance rollup
+                          Compliance
                         </Title>
                       </StackItem>
                       <StackItem>

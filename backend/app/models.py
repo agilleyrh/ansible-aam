@@ -58,6 +58,7 @@ class ManagedEnvironment(Base, TimestampedMixin):
     verify_ssl: Mapped[bool] = mapped_column(Boolean, default=True)
 
     sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=5)
+    is_managed: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[str] = mapped_column(String(40), default="unknown")
     platform_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

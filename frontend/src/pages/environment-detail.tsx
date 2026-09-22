@@ -114,7 +114,7 @@ export function EnvironmentDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [healthHistory, setHealthHistory] = useState<HealthSample[]>([]);
-  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<"deactivate" | "deregister" | null>(null);
 
   async function loadEnvironment(signal?: AbortSignal) {
     if (!environmentId) {
@@ -211,19 +211,38 @@ export function EnvironmentDetailPage() {
     }
   }
 
-  async function handleDelete() {
+  async function handleSetManaged(isManaged: boolean) {
+    if (!environmentId || !environment) {
+      return;
+    }
+    setConfirmAction(null);
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await api.updateEnvironment(environmentId, { is_managed: isManaged });
+      setMessage(isManaged ? `${environment.name} is active again.` : `${environment.name} is deactivated. Collection is paused.`);
+      await loadEnvironment();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to update the registration.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeregister() {
     if (!environmentId || !environment) {
       return;
     }
 
-    setDeleteOpen(false);
+    setConfirmAction(null);
     setBusy(true);
     setError(null);
     try {
       await api.deleteEnvironment(environmentId);
       navigate("/environments");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to delete the environment.");
+      setError(err instanceof Error ? err.message : "Unable to de-register the environment.");
       setBusy(false);
     }
   }
@@ -410,8 +429,17 @@ export function EnvironmentDetailPage() {
               <Button type="button" variant="secondary" isLoading={syncing} isDisabled={syncing} onClick={handleSync}>
                 {syncing ? "Queueing..." : "Queue sync"}
               </Button>
-              <Button type="button" variant="danger" isDisabled={busy} onClick={() => setDeleteOpen(true)}>
-                Delete environment
+              {environment.is_managed === false ? (
+                <Button type="button" variant="primary" isDisabled={busy} onClick={() => handleSetManaged(true)}>
+                  Activate
+                </Button>
+              ) : (
+                <Button type="button" variant="secondary" isDisabled={busy} onClick={() => setConfirmAction("deactivate")}>
+                  Deactivate
+                </Button>
+              )}
+              <Button type="button" variant="danger" isDisabled={busy} onClick={() => setConfirmAction("deregister")}>
+                De-register
               </Button>
             </>
           }
@@ -1157,16 +1185,32 @@ export function EnvironmentDetailPage() {
           </Tab>
         </Tabs>
       </StackItem>
-      <Modal isOpen={deleteOpen} variant="small" onClose={() => setDeleteOpen(false)} aria-labelledby="delete-environment-title">
-        <ModalHeader title="Delete environment" labelId="delete-environment-title" />
+      <Modal
+        isOpen={confirmAction !== null}
+        variant="small"
+        onClose={() => setConfirmAction(null)}
+        aria-labelledby="registration-action-title"
+      >
+        <ModalHeader
+          title={confirmAction === "deactivate" ? "Deactivate registration" : "De-register environment"}
+          labelId="registration-action-title"
+        />
         <ModalBody>
-          Delete {environment.name}? This removes collected resources, sync history, health samples, and policy results for this estate.
+          {confirmAction === "deactivate"
+            ? `Deactivate ${environment.name}? Collection stops until you activate it again. The remote ${environmentKindLabel(environment)} estate is not changed.`
+            : `De-register ${environment.name}? This removes the registration from Advanced Automation Manager. The remote estate stays where it is.`}
         </ModalBody>
         <ModalFooter>
-          <Button variant="danger" isLoading={busy} onClick={handleDelete}>
-            Delete environment
-          </Button>
-          <Button variant="link" onClick={() => setDeleteOpen(false)}>
+          {confirmAction === "deactivate" ? (
+            <Button variant="primary" isLoading={busy} onClick={() => handleSetManaged(false)}>
+              Deactivate
+            </Button>
+          ) : (
+            <Button variant="danger" isLoading={busy} onClick={handleDeregister}>
+              De-register
+            </Button>
+          )}
+          <Button variant="link" onClick={() => setConfirmAction(null)}>
             Cancel
           </Button>
         </ModalFooter>

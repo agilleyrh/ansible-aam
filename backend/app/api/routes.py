@@ -468,6 +468,8 @@ def sync_environment(
     environment = db.get(ManagedEnvironment, environment_id)
     if environment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Environment not found")
+    if not environment.is_managed:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Activate this registration before queueing a sync.")
     try:
         job_id = enqueue_sync(environment_id, user.username)
     except RuntimeError as exc:
