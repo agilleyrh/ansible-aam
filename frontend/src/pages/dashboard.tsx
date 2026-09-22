@@ -185,7 +185,7 @@ export function DashboardPage() {
         <PageHeader
           section="Overview"
           title="Multi-environment automation operations"
-          description="Use the overview for high-level fleet status across Ansible Automation Platform and Automation Orchestrator estates, then move into monitoring, environment settings, and activity for operational work."
+          description="Use the overview for high-level fleet status across Ansible Automation Platform and Automation Orchestrator estates. Monitoring holds health, activity, topology, and search. Settings holds account, access, and collection refresh."
           actions={
             <>
               <LinkButton to="/monitoring" variant="secondary">

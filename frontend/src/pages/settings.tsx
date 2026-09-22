@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Bullseye,
+  Button,
   Card,
   CardBody,
   CardHeader,
@@ -13,24 +14,223 @@ import {
   Gallery,
   Grid,
   GridItem,
+  Label,
   Stack,
   StackItem,
+  Tab,
+  Tabs,
   Content,
+  TextInput,
   Title,
 } from "@patternfly/react-core";
+import { Table, Tbody, Td, Th, Thead, Tr } from "@patternfly/react-table";
+import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "../api";
+import { useAuth } from "../auth";
 import { EmptyState } from "../components/empty-state";
 import { PageHeader } from "../components/page-header";
 import { StatCard } from "../components/stat-card";
-import type { RuntimeSettings } from "../types";
+import type { EnvironmentSummary, RuntimeSettings } from "../types";
+import { environmentKindLabel, formatDateTime } from "../utils";
 
-export function SettingsPage() {
+export function SettingsLayout() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const canManageAccess =
+    user?.system_roles?.includes("admin") ||
+    Object.values(user?.environment_roles ?? {}).some((roles) => roles.includes("environment-admin"));
+  const tabs = [
+    { key: "/settings/account", title: "Account" },
+    ...(canManageAccess ? [{ key: "/settings/access", title: "Access" }] : []),
+    { key: "/settings/application", title: "Application" },
+  ];
+  const active = tabs.some((tab) => location.pathname.startsWith(tab.key)) ? tabs.find((tab) => location.pathname.startsWith(tab.key))?.key : "/settings/application";
+
+  if (location.pathname.startsWith("/settings/access") && !canManageAccess) {
+    return <Navigate to="/settings/account" replace />;
+  }
+
+  return (
+    <Stack hasGutter>
+      <StackItem>
+        <PageHeader
+          section="Settings"
+          title="Settings"
+          description="Manage your account, who can use this hub, and how often each Ansible Automation Platform and Automation Orchestrator estate is refreshed."
+        />
+      </StackItem>
+      <StackItem>
+        <Tabs activeKey={active} onSelect={(_event, key) => navigate(String(key))} aria-label="Settings sections" component="nav" isNav>
+          {tabs.map((tab) => (
+            <Tab key={tab.key} eventKey={tab.key} title={tab.title} />
+          ))}
+        </Tabs>
+      </StackItem>
+      <Outlet />
+    </Stack>
+  );
+}
+
+function canEditRefresh(user: ReturnType<typeof useAuth>["user"], environmentId: string) {
+  if (user?.system_roles?.includes("admin")) {
+    return true;
+  }
+  const roles = user?.environment_roles?.[environmentId] ?? [];
+  return roles.includes("environment-admin") || roles.includes("environment-user");
+}
+
+function CollectionRefresh() {
+  const { user } = useAuth();
+  const [environments, setEnvironments] = useState<EnvironmentSummary[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<Record<string, string>>({});
+  const [rowNotice, setRowNotice] = useState<Record<string, string>>({});
+  const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api
+      .environments(controller.signal)
+      .then(setEnvironments)
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : "Registered estates could not be loaded.");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoaded(true);
+        }
+      });
+    return () => controller.abort();
+  }, []);
+
+  async function save(environment: EnvironmentSummary) {
+    const raw = drafts[environment.id] ?? String(environment.sync_interval_minutes);
+    const minutes = Number.parseInt(raw, 10);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+      setRowError((current) => ({ ...current, [environment.id]: "Enter a refresh interval from 1 to 1440 minutes." }));
+      setRowNotice((current) => ({ ...current, [environment.id]: "" }));
+      return;
+    }
+    setSavingId(environment.id);
+    setRowError((current) => ({ ...current, [environment.id]: "" }));
+    setRowNotice((current) => ({ ...current, [environment.id]: "" }));
+    try {
+      const updated = await api.updateEnvironment(environment.id, { sync_interval_minutes: minutes });
+      setEnvironments((current) => current.map((item) => (item.id === environment.id ? { ...item, ...updated } : item)));
+      setDrafts((current) => ({ ...current, [environment.id]: String(updated.sync_interval_minutes) }));
+      setRowNotice((current) => ({
+        ...current,
+        [environment.id]: environment.is_managed === false ? "Saved. Collection stays paused until this registration is activated." : "Saved. The next collection uses this interval.",
+      }));
+    } catch (err) {
+      setRowError((current) => ({
+        ...current,
+        [environment.id]: err instanceof Error ? err.message : "The refresh interval could not be saved.",
+      }));
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <Stack>
+          <StackItem>
+            <Title headingLevel="h2" size="lg">
+              Collection refresh
+            </Title>
+          </StackItem>
+          <StackItem>
+            <Content component="p" className="aam-muted">
+              Choose how often Advanced Automation Manager collects from each registered estate. Deactivating a registration pauses collection without changing this interval.
+            </Content>
+          </StackItem>
+        </Stack>
+      </CardHeader>
+      <CardBody>
+        {error ? <Alert isInline variant="danger" title={error} /> : null}
+        {!error && loaded && environments.length === 0 ? (
+          <EmptyState title="No estates registered" description="Register an Ansible Automation Platform or Automation Orchestrator estate to set its refresh interval." />
+        ) : null}
+        {environments.length > 0 ? (
+          <Table aria-label="Collection refresh intervals" variant="compact">
+            <Thead>
+              <Tr>
+                <Th>Estate</Th>
+                <Th>Product</Th>
+                <Th>Registration</Th>
+                <Th>Last collected</Th>
+                <Th>Refresh every</Th>
+                <Th />
+              </Tr>
+            </Thead>
+            <Tbody>
+              {environments.map((environment) => {
+                const editable = canEditRefresh(user, environment.id);
+                const value = drafts[environment.id] ?? String(environment.sync_interval_minutes);
+                const dirty = value !== String(environment.sync_interval_minutes);
+                return (
+                  <Tr key={environment.id}>
+                    <Td dataLabel="Estate">{environment.name}</Td>
+                    <Td dataLabel="Product">{environmentKindLabel(environment)}</Td>
+                    <Td dataLabel="Registration">
+                      {environment.is_managed === false ? <Label color="grey">Inactive</Label> : <Label color="green">Active</Label>}
+                    </Td>
+                    <Td dataLabel="Last collected">{formatDateTime(environment.last_synced_at)}</Td>
+                    <Td dataLabel="Refresh every">
+                      <TextInput
+                        className="aam-refresh-input"
+                        type="number"
+                        aria-label={`Refresh interval for ${environment.name}`}
+                        value={value}
+                        min={1}
+                        max={1440}
+                        isDisabled={!editable || savingId === environment.id}
+                        onChange={(_event, next) => setDrafts((current) => ({ ...current, [environment.id]: next }))}
+                      />
+                      <span className="aam-muted"> minutes</span>
+                      {rowError[environment.id] ? <p className="aam-muted">{rowError[environment.id]}</p> : null}
+                      {rowNotice[environment.id] ? <p className="aam-form-help">{rowNotice[environment.id]}</p> : null}
+                    </Td>
+                    <Td dataLabel="Save">
+                      {editable ? (
+                        <Button variant="secondary" isDisabled={!dirty || savingId === environment.id} isLoading={savingId === environment.id} onClick={() => save(environment)}>
+                          Save
+                        </Button>
+                      ) : (
+                        <span className="aam-muted">View only</span>
+                      )}
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </Tbody>
+          </Table>
+        ) : null}
+      </CardBody>
+    </Card>
+  );
+}
+
+export function ApplicationSettingsPage() {
+  const { user } = useAuth();
+  const isSystemAdmin = user?.system_roles?.includes("admin") ?? false;
   const [settings, setSettings] = useState<RuntimeSettings | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(isSystemAdmin);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isSystemAdmin) {
+      setLoading(false);
+      return;
+    }
     const controller = new AbortController();
     Promise.allSettled([api.runtimeSettings(controller.signal)])
       .then(([settingsResult]) => {
@@ -49,42 +249,32 @@ export function SettingsPage() {
         }
       });
     return () => controller.abort();
-  }, []);
-
-  if (loading && !settings) {
-    return (
-      <Bullseye>
-        <Card >
-          <CardBody>Loading runtime settings...</CardBody>
-        </Card>
-      </Bullseye>
-    );
-  }
-
-  if (error && !settings) {
-    return <Alert isInline variant="danger" title={`Runtime settings unavailable: ${error}`} />;
-  }
-
-  if (!settings) {
-    return (
-      <Bullseye>
-        <Card >
-          <CardBody>Loading runtime settings...</CardBody>
-        </Card>
-      </Bullseye>
-    );
-  }
+  }, [isSystemAdmin]);
 
   return (
     <Stack hasGutter>
       <StackItem>
-        <PageHeader
-          section="Administration"
-          title="Runtime settings and deployment profile"
-          description="Review the running backend defaults, trusted headers, and the core settings that shape how the control hub collects AAP and Automation Orchestrator estates."
-        />
+        <CollectionRefresh />
       </StackItem>
 
+      {isSystemAdmin && loading && !settings ? (
+        <StackItem>
+          <Bullseye>
+            <Card>
+              <CardBody>Loading runtime settings...</CardBody>
+            </Card>
+          </Bullseye>
+        </StackItem>
+      ) : null}
+
+      {isSystemAdmin && error && !settings ? (
+        <StackItem>
+          <Alert isInline variant="danger" title={`Runtime settings unavailable: ${error}`} />
+        </StackItem>
+      ) : null}
+
+      {settings ? (
+        <>
       {error ? (
         <StackItem>
           <Alert isInline variant="warning" title={`Loaded with partial data: ${error}`} />
@@ -182,7 +372,7 @@ export function SettingsPage() {
                   </StackItem>
                   <StackItem>
                     <Content component="p" className="aam-muted">
-                      Monitoring, activity, and environment registration are intentionally separated now. Use the monitoring page for collected signals, the activity page for sync and action history, and environment settings for platform-specific declarations.
+                      Health, activity, topology, and search share the Monitoring section. Account, access, and collection refresh share Settings.
                     </Content>
                   </StackItem>
                 </Stack>
@@ -198,13 +388,13 @@ export function SettingsPage() {
                   <DescriptionListGroup>
                     <DescriptionListTerm>Collection model</DescriptionListTerm>
                     <DescriptionListDescription>
-                      Environment sync cadence and service authentication are configured per environment in the registry, not in global runtime settings.
+                      Collection refresh for each estate is set in Application settings. Service authentication stays on the estate registration.
                     </DescriptionListDescription>
                   </DescriptionListGroup>
                   <DescriptionListGroup>
                     <DescriptionListTerm>Operational views</DescriptionListTerm>
                     <DescriptionListDescription>
-                      Use Overview for fleet summary, Monitoring for platform signals, Environments for registration and settings, and Activity for operator actions and sync history.
+                      Use Overview for fleet summary, Monitoring for health, activity, topology, and search, and Environments for registration.
                     </DescriptionListDescription>
                   </DescriptionListGroup>
                 </DescriptionList>
@@ -213,6 +403,8 @@ export function SettingsPage() {
           </GridItem>
         </Grid>
       </StackItem>
+        </>
+      ) : null}
     </Stack>
   );
 }

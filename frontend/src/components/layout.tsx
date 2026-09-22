@@ -1,14 +1,14 @@
 import {
   Button,
-  Card,
-  CardBody,
-  CardHeader,
-  Label,
+  Dropdown,
+  DropdownItem,
+  DropdownList,
   Masthead,
   MastheadBrand,
   MastheadContent,
   MastheadLogo,
   MastheadMain,
+  MenuToggle,
   Nav,
   NavItem,
   NavList,
@@ -16,16 +16,13 @@ import {
   PageSection,
   PageSidebar,
   PageSidebarBody,
-  Stack,
-  StackItem,
-  Content,
   Title,
 } from "@patternfly/react-core";
-import { BellIcon } from "@patternfly/react-icons";
+import { BalanceScaleIcon, BellIcon, CogIcon, CubesIcon, HeartbeatIcon, PlayIcon, TachometerAltIcon } from "@patternfly/react-icons";
 import { Link as RouterLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
-import { AnsibleLogo } from "./ansible-logo";
+import { AapLogo } from "./aap-logo";
 import { ColorModeToggle } from "./color-mode-toggle";
 import { api } from "../api";
 import { useAuth } from "../auth";
@@ -38,22 +35,14 @@ export function AppLayout() {
   const [alerts, setAlerts] = useState<FleetAlert[]>([]);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [alertError, setAlertError] = useState("");
-  const isSystemAdmin = user?.system_roles?.includes("admin") ?? false;
-  const canManageAccess =
-    isSystemAdmin ||
-    Object.values(user?.environment_roles ?? {}).some((roles) => roles.includes("environment-admin"));
-  const links = [
-    { to: "/", label: "Overview" },
-    { to: "/monitoring", label: "Monitoring" },
-    { to: "/jobs", label: "Jobs" },
-    { to: "/environments", label: "Environments" },
-    { to: "/activity", label: "Activity" },
-    { to: "/policies", label: "Governance" },
-    { to: "/topology", label: "Topology" },
-    { to: "/search", label: "Search" },
-    { to: "/account", label: "Account" },
-    ...(canManageAccess ? [{ to: "/access", label: "Access" }] : []),
-    ...(isSystemAdmin ? [{ to: "/settings", label: "Administration" }] : []),
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const links: Array<{ to: string; label: string; icon: ReactNode; matches: string[] }> = [
+    { to: "/", label: "Overview", icon: <TachometerAltIcon />, matches: ["/"] },
+    { to: "/environments", label: "Environments", icon: <CubesIcon />, matches: ["/environments"] },
+    { to: "/jobs", label: "Jobs", icon: <PlayIcon />, matches: ["/jobs"] },
+    { to: "/monitoring", label: "Monitoring", icon: <HeartbeatIcon />, matches: ["/monitoring", "/activity", "/topology", "/search"] },
+    { to: "/policies", label: "Governance", icon: <BalanceScaleIcon />, matches: ["/policies"] },
+    { to: "/settings/application", label: "Settings", icon: <CogIcon />, matches: ["/settings", "/account", "/access"] },
   ];
 
   useEffect(() => {
@@ -81,8 +70,8 @@ export function AppLayout() {
     };
   }, []);
 
-  function isActivePath(path: string) {
-    return path === "/" ? location.pathname === path : location.pathname === path || location.pathname.startsWith(`${path}/`);
+  function isActivePath(matches: string[]) {
+    return matches.some((path) => (path === "/" ? location.pathname === "/" : location.pathname === path || location.pathname.startsWith(`${path}/`)));
   }
 
   const openAlerts = alerts.filter((alert) => !alert.acknowledged_at && !alert.resolved_at);
@@ -93,31 +82,45 @@ export function AppLayout() {
       <MastheadMain>
         <MastheadBrand>
           <MastheadLogo component={(props) => <RouterLink {...props} to="/" />}>
-            <div className="aam-brand">
-              <div className="aam-brand__mark">
-                <AnsibleLogo />
-              </div>
-              <div>
-                <Title headingLevel="h1" size="md" className="aam-brand__title">
-                  Advanced Automation Manager
-                </Title>
-              </div>
-            </div>
+            <AapLogo />
           </MastheadLogo>
         </MastheadBrand>
       </MastheadMain>
       <MastheadContent>
         <div className="aam-masthead-actions">
-          <span className="aam-masthead-user">{user?.username}</span>
-          {user?.system_roles?.includes("admin") ? <Label color="blue">Administrator</Label> : null}
-          <Button
-            variant="link"
-            onClick={() => {
-              logout().then(() => navigate("/login"));
-            }}
+          <Dropdown
+            isOpen={userMenuOpen}
+            onOpenChange={setUserMenuOpen}
+            onSelect={() => setUserMenuOpen(false)}
+            popperProps={{ position: "right" }}
+            toggle={(toggleRef) => (
+              <MenuToggle
+                ref={toggleRef}
+                onClick={() => setUserMenuOpen((open) => !open)}
+                isExpanded={userMenuOpen}
+                variant="plainText"
+              >
+                {user?.username}
+              </MenuToggle>
+            )}
           >
-            Log out
-          </Button>
+            <DropdownList>
+              <DropdownItem
+                onClick={() => {
+                  navigate("/settings/account");
+                }}
+              >
+                Account
+              </DropdownItem>
+              <DropdownItem
+                onClick={() => {
+                  logout().then(() => navigate("/login"));
+                }}
+              >
+                Log out
+              </DropdownItem>
+            </DropdownList>
+          </Dropdown>
           <div className="aam-alerts">
             <Button
               variant="plain"
@@ -198,34 +201,17 @@ export function AppLayout() {
 
   const sidebar = (
     <PageSidebar isSidebarOpen>
-      <PageSidebarBody usePageInsets isFilled>
-        <Stack hasGutter>
-          <StackItem>
-            <Nav aria-label="Main navigation">
-              <NavList>
-                {links.map((link) => (
-                  <NavItem key={link.to} itemId={link.to} isActive={isActivePath(link.to)}>
-                    <RouterLink to={link.to}>{link.label}</RouterLink>
-                  </NavItem>
-                ))}
-              </NavList>
-            </Nav>
-          </StackItem>
-          <StackItem isFilled>
-            <Card isCompact className="aam-sidebar-card">
-              <CardHeader>
-                <Title headingLevel="h2" size="md">
-                  Operating model
-                </Title>
-              </CardHeader>
-              <CardBody>
-                <Content component="p">
-                  Register AAP and Automation Orchestrator environments across Podman, OpenShift, and cloud footprints. Monitor health, review live jobs and executions, and act from one control hub.
-                </Content>
-              </CardBody>
-            </Card>
-          </StackItem>
-        </Stack>
+      <PageSidebarBody usePageInsets>
+        <p className="aam-sidebar-product">Advanced Automation Manager</p>
+        <Nav aria-label="Main navigation">
+          <NavList>
+            {links.map((link) => (
+              <NavItem key={link.to} itemId={link.to} icon={link.icon} isActive={isActivePath(link.matches)}>
+                <RouterLink to={link.to}>{link.label}</RouterLink>
+              </NavItem>
+            ))}
+          </NavList>
+        </Nav>
       </PageSidebarBody>
     </PageSidebar>
   );

@@ -45,7 +45,7 @@ export function SearchPage() {
     <Stack hasGutter>
       <StackItem>
         <PageHeader
-          section="Search"
+          section="Monitoring"
           title="Search the collected automation inventory"
           description="Search templates, Orchestrator workflows, executions, integrations, projects, credentials, activations, repositories, and collections across every registered AAP and Orchestrator estate."
         />

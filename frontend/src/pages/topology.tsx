@@ -207,7 +207,7 @@ export function TopologyPage() {
     <Stack hasGutter>
       <StackItem>
         <PageHeader
-          section="Topology"
+          section="Monitoring"
           title="Service and resource relationships"
           description="Follow how each Ansible Automation Platform or Automation Orchestrator estate expands into its own services, collected resources, and declared integrations."
           actions={

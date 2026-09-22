@@ -23,10 +23,8 @@ a {
 }
 
 .aam-page-header {
-  padding: var(--pf-t--global--spacer--lg);
-  border-radius: var(--pf-t--global--border--radius--small);
-  background: var(--pf-t--global--background--color--primary--default);
-  box-shadow: var(--pf-t--global--box-shadow--sm);
+  padding: 0;
+  background: transparent;
 }
 
 .aam-page-header__section,
@@ -49,33 +47,28 @@ a {
   margin: var(--pf-t--global--spacer--md) 0 0;
 }
 
-.aam-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--pf-t--global--spacer--sm);
-}
-
-.aam-brand__mark {
-  display: grid;
-  place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  flex: 0 0 2.25rem;
-  border-radius: 50%;
-  overflow: hidden;
-  background: transparent;
-}
-
-.aam-ansible-logo {
+.aam-aap-logo {
   display: block;
-  width: 2.25rem;
-  height: 2.25rem;
+  height: 4.25rem;
+  width: auto;
+  max-width: min(22rem, 52vw);
+  object-fit: contain;
+  object-position: left center;
 }
 
-.aam-brand__title {
-  margin: 0;
+.aam-refresh-input {
+  display: inline-block;
+  width: 6.5rem;
+  margin-right: var(--pf-t--global--spacer--xs);
+}
+
+.aam-sidebar-product {
+  margin: 0 0 var(--pf-t--global--spacer--md);
   color: var(--pf-t--global--text--color--regular);
-  line-height: 1.2;
+  font-family: var(--pf-t--global--font--family--heading);
+  font-size: var(--pf-t--global--font--size--md);
+  font-weight: var(--pf-t--global--font--weight--heading--medium, 500);
+  line-height: 1.3;
 }
 
 .aam-masthead-actions {
@@ -228,9 +221,9 @@ a {
   margin-bottom: var(--pf-t--global--spacer--md);
 }
 
-.aam-login-mark .aam-ansible-logo {
-  width: 3rem;
-  height: 3rem;
+.aam-login-mark .aam-aap-logo {
+  height: 5.5rem;
+  max-width: min(28rem, 80vw);
 }
 
 .aam-monitoring-page .pf-v6-l-grid,
@@ -288,10 +281,6 @@ a {
 
 .aam-env-monitor-card {
   height: auto;
-}
-
-.aam-sidebar-card {
-  background: var(--pf-t--global--background--color--secondary--default);
 }
 
 .aam-data-list__primary {
