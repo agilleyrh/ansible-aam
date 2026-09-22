@@ -13,11 +13,29 @@ from app.services.platform_config import controller_config, eda_config
 
 DEFAULT_POLICIES = [
     {
-        "name": "AAP 2.6 baseline",
-        "description": "All managed AAP environments should remain on the 2.6 release train.",
+        "name": "AAP 2.7 baseline",
+        "description": "Ansible Automation Platform estates should remain on the 2.7 release train.",
         "severity": "high",
         "scope": {"kind": "aap"},
-        "rule": {"type": "require_version_prefix", "prefix": "2.6"},
+        "rule": {"type": "require_version_prefix", "prefix": "2.7"},
+    },
+    {
+        "name": "TLS verification required",
+        "description": "Every Ansible Automation Platform and Automation Orchestrator estate should verify TLS certificates.",
+        "severity": "high",
+        "rule": {"type": "require_tls_verification"},
+    },
+    {
+        "name": "Minimum health score",
+        "description": "Every estate should stay at a health score of at least 70.",
+        "severity": "medium",
+        "rule": {"type": "min_health_score", "threshold": 70},
+    },
+    {
+        "name": "Collection interval",
+        "description": "Collection refresh should be an hour or less so fleet state stays current.",
+        "severity": "medium",
+        "rule": {"type": "max_sync_interval_minutes", "threshold": 60},
     },
     {
         "name": "Sync freshness",
@@ -106,6 +124,13 @@ DEFAULT_POLICIES = [
         "rule": {"type": "max_failed_executions", "threshold": 5},
     },
     {
+        "name": "Controller basic authentication disabled",
+        "description": "Gateway-backed Ansible Automation Platform estates should not accept controller basic authentication.",
+        "severity": "medium",
+        "scope": {"kind": "aap"},
+        "rule": {"type": "controller_setting", "key": "AUTH_BASIC_ENABLED", "value": False, "remediate": False},
+    },
+    {
         "name": "Activity stream enabled",
         "description": "Controller activity stream should stay enabled so fleet audit history is complete.",
         "severity": "medium",
@@ -151,7 +176,22 @@ DEFAULT_POLICIES = [
 
 
 def seed_default_policies(db: Session) -> None:
-    existing = {policy.name for policy in db.scalars(select(PolicyDefinition)).all()}
+    existing_policies = list(db.scalars(select(PolicyDefinition)).all())
+    names = {policy.name for policy in existing_policies}
+    legacy = next((policy for policy in existing_policies if policy.name == "AAP 2.6 baseline"), None)
+    if (
+        legacy
+        and "AAP 2.7 baseline" not in names
+        and (legacy.rule or {}).get("type") == "require_version_prefix"
+        and str((legacy.rule or {}).get("prefix")) == "2.6"
+    ):
+        legacy.name = "AAP 2.7 baseline"
+        legacy.description = "Ansible Automation Platform estates should remain on the 2.7 release train."
+        legacy.rule = {"type": "require_version_prefix", "prefix": "2.7"}
+        legacy.scope = {"kind": "aap"}
+        names.discard("AAP 2.6 baseline")
+        names.add("AAP 2.7 baseline")
+    existing = names
     for policy in DEFAULT_POLICIES:
         if policy["name"] in existing:
             continue
@@ -218,6 +258,17 @@ def _evaluate_rule(policy: PolicyDefinition, environment: ManagedEnvironment) ->
     service_summaries = summary.get("service_summaries", {})
     rule_type = rule.get("type")
     capabilities = environment.capabilities or {}
+
+    if rule_type == "require_tls_verification":
+        if bool(getattr(environment, "verify_ssl", True)):
+            return "compliant", "TLS certificate verification is enabled", {}
+        return "noncompliant", "TLS certificate verification is disabled for this estate", {}
+
+    if rule_type == "max_sync_interval_minutes":
+        threshold = int(rule.get("threshold", 60))
+        interval = int(getattr(environment, "sync_interval_minutes", 0) or 0)
+        state = "compliant" if interval <= threshold else "noncompliant"
+        return state, f"Collection refresh is {interval} minutes", {"interval_minutes": interval, "threshold": threshold}
 
     if rule_type == "require_version_prefix":
         prefix = str(rule.get("prefix", "")).strip()

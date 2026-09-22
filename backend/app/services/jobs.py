@@ -16,6 +16,7 @@ from app.schemas import (
     FleetJobsResponse,
 )
 from app.services.connectors import AAPConnector, is_orchestrator_environment, normalize_orchestrator_job_status
+from app.services.hub_preferences import load_hub_preferences
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ def _add_counts(base: dict[str, int], extra: dict[str, int]) -> dict[str, int]:
     return merged
 
 
-async def _stats_for_environment(environment: ManagedEnvironment) -> EnvironmentJobStats:
+async def _stats_for_environment(environment: ManagedEnvironment, *, request_timeout_seconds: int | None = None) -> EnvironmentJobStats:
     controller_configured = _controller_configured(environment)
     orchestrator_configured = _orchestrator_configured(environment)
     base = EnvironmentJobStats(
@@ -85,7 +86,7 @@ async def _stats_for_environment(environment: ManagedEnvironment) -> Environment
 
     counts: dict[str, int] = {}
     errors: list[str] = []
-    connector = AAPConnector(environment)
+    connector = AAPConnector(environment, request_timeout_seconds=request_timeout_seconds)
 
     if controller_configured:
         try:
@@ -195,13 +196,14 @@ async def _jobs_for_environment(
     *,
     status: str | None | tuple[str, ...],
     limit: int,
+    request_timeout_seconds: int | None = None,
 ) -> list[ControllerJob]:
     controller_configured = _controller_configured(environment)
     orchestrator_configured = _orchestrator_configured(environment)
     if not controller_configured and not orchestrator_configured:
         return []
 
-    connector = AAPConnector(environment)
+    connector = AAPConnector(environment, request_timeout_seconds=request_timeout_seconds)
     jobs: list[ControllerJob] = []
 
     if controller_configured:
@@ -246,7 +248,10 @@ async def build_fleet_job_stats(db: Session, environment_ids: list[str] | None =
     environments = list(db.scalars(statement).all())
     if not environments:
         return FleetJobStatsResponse(environment_count=0)
-    by_environment = await asyncio.gather(*[_stats_for_environment(environment) for environment in environments])
+    timeout = load_hub_preferences(db).request_timeout_seconds
+    by_environment = await asyncio.gather(
+        *[_stats_for_environment(environment, request_timeout_seconds=timeout) for environment in environments]
+    )
     return _rollup(list(by_environment))
 
 
@@ -268,15 +273,23 @@ async def build_fleet_jobs(
         return FleetJobsResponse(jobs=[], stats=FleetJobStatsResponse(environment_count=0))
 
     status_filter = _normalize_status_filter(status)
+    timeout = load_hub_preferences(db).request_timeout_seconds
 
     job_lists, stats_list = await asyncio.gather(
         asyncio.gather(
             *[
-                _jobs_for_environment(environment, status=status_filter, limit=limit_per_environment)
+                _jobs_for_environment(
+                    environment,
+                    status=status_filter,
+                    limit=limit_per_environment,
+                    request_timeout_seconds=timeout,
+                )
                 for environment in environments
             ]
         ),
-        asyncio.gather(*[_stats_for_environment(environment) for environment in environments]),
+        asyncio.gather(
+            *[_stats_for_environment(environment, request_timeout_seconds=timeout) for environment in environments]
+        ),
     )
 
     jobs: list[ControllerJob] = []

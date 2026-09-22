@@ -441,6 +441,26 @@ class RuntimeSettingsResponse(BaseModel):
     trusted_headers: dict[str, str]
 
 
+class HubPreferencesResponse(BaseModel):
+    default_sync_interval_minutes: int
+    session_ttl_minutes: int
+    search_result_limit: int
+    request_timeout_seconds: int
+    scheduler_interval_seconds: int
+    local_login_enabled: bool
+    local_login_locked: bool = False
+
+
+class HubPreferencesUpdate(BaseModel):
+    default_sync_interval_minutes: int = Field(ge=1, le=1440)
+    session_ttl_minutes: int = Field(ge=15, le=10080)
+    search_result_limit: int = Field(ge=5, le=200)
+    request_timeout_seconds: int = Field(ge=5, le=120)
+    scheduler_interval_seconds: int = Field(ge=15, le=300)
+    local_login_enabled: bool
+    apply_sync_interval_to_all: bool = False
+
+
 class HealthSampleResponse(BaseModel):
     environment_id: str
     environment_name: str

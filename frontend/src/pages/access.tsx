@@ -7,6 +7,11 @@ import {
   CardBody,
   CardHeader,
   Checkbox,
+  Content,
+  DescriptionList,
+  DescriptionListDescription,
+  DescriptionListGroup,
+  DescriptionListTerm,
   Form,
   FormGroup,
   FormSelect,
@@ -22,6 +27,41 @@ import { Table, Tbody, Td, Th, Thead, Tr } from "@patternfly/react-table";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import type { AccessDirectory, EnvironmentSummary } from "../types";
+
+const ROLE_COPY: Record<string, { label: string; help: string }> = {
+  admin: {
+    label: "System administrator",
+    help: "Full control of this hub, every estate, access, and governance.",
+  },
+  auditor: {
+    label: "System auditor",
+    help: "Can read every estate. Cannot change registrations, jobs, or access.",
+  },
+  user: {
+    label: "System user",
+    help: "Can register estates and work on estates where they also have an environment role.",
+  },
+  authenticated: {
+    label: "Signed-in account",
+    help: "Baseline for anyone who can sign in. This does not grant administration.",
+  },
+  "environment-admin": {
+    label: "Environment administrator",
+    help: "Manage one estate and decide who else can use that estate.",
+  },
+  "environment-user": {
+    label: "Environment operator",
+    help: "Sync and run jobs on one estate. Cannot change who has access.",
+  },
+  "environment-auditor": {
+    label: "Environment auditor",
+    help: "Read one estate. Cannot change it or run jobs.",
+  },
+};
+
+function roleLabel(role: string) {
+  return ROLE_COPY[role]?.label ?? role;
+}
 
 const emptyProvider = {
   id: "",
@@ -148,8 +188,11 @@ export function AccessPage() {
         <Card>
           <CardHeader>
             <Title headingLevel="h2" size="lg">
-              Users
+              Who can sign in
             </Title>
+            <Content component="p" className="aam-muted">
+              Local accounts are created here. Directory and OpenID Connect accounts appear after someone signs in with an identity provider.
+            </Content>
           </CardHeader>
           <CardBody>
             {users.length === 0 ? (
@@ -206,23 +249,26 @@ export function AccessPage() {
         <Card>
           <CardHeader>
             <Title headingLevel="h2" size="lg">
-              Role assignments
+              What they can do
             </Title>
+            <Content component="p" className="aam-muted">
+              A hub role covers Advanced Automation Manager. An environment role covers one registered Ansible Automation Platform or Automation Orchestrator estate. Built-in groups already grant hub roles: admins, auditors, and users.
+            </Content>
           </CardHeader>
           <CardBody>
             <Stack hasGutter>
               {(directory?.assignments ?? []).length === 0 ? (
                 <StackItem>
-                  <p className="aam-muted">No extra role assignments yet. Built-in group roles still apply.</p>
+                  <p className="aam-muted">No extra assignments yet. People in the admins, auditors, or users groups already have the matching hub role.</p>
                 </StackItem>
               ) : (
                 <StackItem>
                   <Table aria-label="Role assignments" variant="compact">
                     <Thead>
                       <Tr>
+                        <Th>Who</Th>
                         <Th>Role</Th>
-                        <Th>Scope</Th>
-                        <Th>Principal</Th>
+                        <Th>Where</Th>
                         <Th />
                       </Tr>
                     </Thead>
@@ -235,9 +281,15 @@ export function AccessPage() {
                         const estate = environments.find((environment) => environment.id === assignment.environment_id)?.name;
                         return (
                           <Tr key={assignment.id}>
-                            <Td>{assignment.role}</Td>
-                            <Td>{assignment.scope === "environment" ? estate || assignment.environment_id : "Platform"}</Td>
-                            <Td>{principal || assignment.principal_id}</Td>
+                            <Td>
+                              {principal || assignment.principal_id}
+                              <div className="aam-muted">{assignment.principal_type === "group" ? "Group" : "User"}</div>
+                            </Td>
+                            <Td>
+                              {roleLabel(assignment.role)}
+                              <div className="aam-muted">{ROLE_COPY[assignment.role]?.help}</div>
+                            </Td>
+                            <Td>{assignment.scope === "environment" ? estate || "One estate" : "This hub"}</Td>
                             <Td>
                               <Button
                                 variant="link"
@@ -260,21 +312,37 @@ export function AccessPage() {
               )}
               <StackItem>
                 <Form onSubmit={assignRole}>
-                  <FormGroup label="Scope" fieldId="assign-scope">
-                    <FormSelect id="assign-scope" value={scope} onChange={(_event, value) => setScope(value)}>
-                      <FormSelectOption value="environment" label="Environment" />
-                      {isSystemAdmin ? <FormSelectOption value="system" label="System" /> : null}
+                  <DescriptionList isCompact>
+                    {(scope === "environment" ? directory?.environment_roles : directory?.system_roles?.filter((item) => item !== "authenticated"))?.map((item) => (
+                      <DescriptionListGroup key={item}>
+                        <DescriptionListTerm>{roleLabel(item)}</DescriptionListTerm>
+                        <DescriptionListDescription>{ROLE_COPY[item]?.help}</DescriptionListDescription>
+                      </DescriptionListGroup>
+                    ))}
+                  </DescriptionList>
+                  <FormGroup label="Where does this role apply?" fieldId="assign-scope">
+                    <FormSelect
+                      id="assign-scope"
+                      value={scope}
+                      onChange={(_event, value) => {
+                        setScope(value);
+                        setRole(value === "environment" ? "environment-user" : "user");
+                      }}
+                    >
+                      <FormSelectOption value="environment" label="One registered estate" />
+                      {isSystemAdmin ? <FormSelectOption value="system" label="This hub" /> : null}
                     </FormSelect>
                   </FormGroup>
                   <FormGroup label="Role" fieldId="assign-role">
                     <FormSelect id="assign-role" value={role} onChange={(_event, value) => setRole(value)}>
-                      {(scope === "environment" ? directory?.environment_roles : directory?.system_roles)?.map((item) => (
-                        <FormSelectOption key={item} value={item} label={item} />
+                      {(scope === "environment" ? directory?.environment_roles : directory?.system_roles?.filter((item) => item !== "authenticated"))?.map((item) => (
+                        <FormSelectOption key={item} value={item} label={roleLabel(item)} />
                       ))}
                     </FormSelect>
+                    <p className="aam-form-help">{ROLE_COPY[role]?.help}</p>
                   </FormGroup>
                   {scope === "environment" ? (
-                    <FormGroup label="Environment" fieldId="assign-environment">
+                    <FormGroup label="Which estate?" fieldId="assign-environment">
                       <FormSelect id="assign-environment" value={environmentId} onChange={(_event, value) => setEnvironmentId(value)}>
                         <FormSelectOption value="" label="Select an environment" />
                         {environments.map((environment) => (
@@ -283,7 +351,7 @@ export function AccessPage() {
                       </FormSelect>
                     </FormGroup>
                   ) : null}
-                  <FormGroup label="Principal" fieldId="assign-principal-type">
+                  <FormGroup label="Assign to a person or a group?" fieldId="assign-principal-type">
                     <FormSelect
                       id="assign-principal-type"
                       value={principalType}
@@ -292,8 +360,8 @@ export function AccessPage() {
                         setPrincipalId("");
                       }}
                     >
-                      <FormSelectOption value="user" label="User" />
-                      <FormSelectOption value="group" label="Group" />
+                      <FormSelectOption value="user" label="One person" />
+                      <FormSelectOption value="group" label="Everyone in a group" />
                     </FormSelect>
                   </FormGroup>
                   <FormGroup label={principalType === "group" ? "Group" : "User"} fieldId="assign-principal">
@@ -305,7 +373,7 @@ export function AccessPage() {
                     </FormSelect>
                   </FormGroup>
                   <Button type="submit" variant="primary">
-                    Assign role
+                    Assign this role
                   </Button>
                 </Form>
               </StackItem>
@@ -318,8 +386,11 @@ export function AccessPage() {
         <Card>
           <CardHeader>
             <Title headingLevel="h2" size="lg">
-              Identity providers
+              How they sign in
             </Title>
+            <Content component="p" className="aam-muted">
+              Add OpenID Connect, LDAP, or Active Directory. Local accounts stay available unless you turn them off in Application settings. The built-in administrator can always sign in.
+            </Content>
           </CardHeader>
           <CardBody>
             <Stack hasGutter>
@@ -379,7 +450,7 @@ export function AccessPage() {
                     isChecked={provider.allow_all_authenticated}
                     onChange={(_event, checked) => setProvider({ ...provider, allow_all_authenticated: checked })}
                   />
-                  <FormGroup label="Configuration JSON" fieldId="provider-config">
+                  <FormGroup label="Connection details" fieldId="provider-config">
                     <TextArea
                       id="provider-config"
                       value={provider.configText}

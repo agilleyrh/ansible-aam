@@ -44,6 +44,8 @@ from app.schemas import (
     ConfigBaselineResponse,
     RemoteActionRequest,
     RemoteActionResponse,
+    HubPreferencesResponse,
+    HubPreferencesUpdate,
     RuntimeSettingsResponse,
     SearchResult,
     SyncExecutionResponse,
@@ -56,7 +58,8 @@ from app.config import get_settings
 from app.health import health_response
 from app.services.collector import enqueue_sync, record_action
 from app.security import encrypt_secret, environment_is_visible, require_roles, resolve_user
-from app.services.connectors import AAPConnector, SERVICE_LABELS, is_orchestrator_environment
+from app.services.connectors import SERVICE_LABELS, is_orchestrator_environment
+from app.services.hub_preferences import load_hub_preferences, open_aap_connector
 from app.services.dashboard import build_dashboard
 from app.services.jobs import build_fleet_job_stats, build_fleet_jobs
 from app.services.monitoring import build_monitoring
@@ -253,7 +256,7 @@ async def list_approvals(
         if not is_orchestrator_environment(environment):
             continue
         try:
-            records = await AAPConnector(environment).list_orchestrator_approvals()
+            records = await open_aap_connector(environment, db).list_orchestrator_approvals()
         except Exception:  # noqa: BLE001
             logger.warning("Approval list failed for environment %s", environment.id)
             continue
@@ -683,7 +686,7 @@ async def create_policy(
     db.refresh(policy)
     if payload.enabled and payload.push_to_fleet:
         environments = db.scalars(select(ManagedEnvironment).order_by(ManagedEnvironment.name)).all()
-        await _refresh_live_controller_config(list(environments))
+        await _refresh_live_controller_config(db, list(environments))
         evaluate_fleet(db, policy_id=policy.id)
     return PolicyResponse.model_validate(policy)
 
@@ -732,7 +735,7 @@ async def push_policy(
             detail="Enable the policy before pushing it to managed environments",
         )
     environments = db.scalars(select(ManagedEnvironment).order_by(ManagedEnvironment.name)).all()
-    refresh_errors = await _refresh_live_controller_config(list(environments))
+    refresh_errors = await _refresh_live_controller_config(db, list(environments))
     counts = evaluate_fleet(db, policy_id=policy.id)
     for check in counts.get("checks") or []:
         error = refresh_errors.get(check.get("environment_id", ""))
@@ -998,6 +1001,49 @@ def runtime_settings(
     )
 
 
+def _preference_response(row, *, local_login_locked: bool) -> HubPreferencesResponse:
+    return HubPreferencesResponse(
+        default_sync_interval_minutes=row.default_sync_interval_minutes,
+        session_ttl_minutes=row.session_ttl_minutes,
+        search_result_limit=row.search_result_limit,
+        request_timeout_seconds=row.request_timeout_seconds,
+        scheduler_interval_seconds=row.scheduler_interval_seconds,
+        local_login_enabled=row.local_login_enabled and not local_login_locked,
+        local_login_locked=local_login_locked,
+    )
+
+
+@router.get("/settings/preferences", response_model=HubPreferencesResponse)
+def get_hub_preferences(
+    db: Session = Depends(get_db),
+    _: UserContext = Depends(require_roles("aam.viewer")),
+) -> HubPreferencesResponse:
+    row = load_hub_preferences(db)
+    return _preference_response(row, local_login_locked=not get_settings().local_login_enabled)
+
+
+@router.patch("/settings/preferences", response_model=HubPreferencesResponse)
+def update_hub_preferences(
+    payload: HubPreferencesUpdate,
+    db: Session = Depends(get_db),
+    _: UserContext = Depends(require_roles("aam.admin")),
+) -> HubPreferencesResponse:
+    row = load_hub_preferences(db)
+    locked = not get_settings().local_login_enabled
+    row.default_sync_interval_minutes = payload.default_sync_interval_minutes
+    row.session_ttl_minutes = payload.session_ttl_minutes
+    row.search_result_limit = payload.search_result_limit
+    row.request_timeout_seconds = payload.request_timeout_seconds
+    row.scheduler_interval_seconds = payload.scheduler_interval_seconds
+    row.local_login_enabled = False if locked else payload.local_login_enabled
+    if payload.apply_sync_interval_to_all:
+        for environment in db.scalars(select(ManagedEnvironment)).all():
+            environment.sync_interval_minutes = payload.default_sync_interval_minutes
+    db.commit()
+    db.refresh(row)
+    return _preference_response(row, local_login_locked=locked)
+
+
 @router.post("/actions", response_model=RemoteActionResponse)
 async def execute_action(
     payload: RemoteActionRequest,
@@ -1012,7 +1058,7 @@ async def execute_action(
         if not granted.intersection({"environment-admin", "environment-user"}):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot operate this environment.")
 
-    connector = AAPConnector(environment)
+    connector = open_aap_connector(environment, db)
     try:
         service, response_body = await connector.execute_action(
             payload.action, payload.target_id, payload.payload, payload.path_override,
@@ -1055,11 +1101,11 @@ async def execute_action(
     )
 
 
-async def _refresh_live_controller_config(environments: list[ManagedEnvironment]) -> dict[str, str]:
+async def _refresh_live_controller_config(db: Session, environments: list[ManagedEnvironment]) -> dict[str, str]:
     errors: dict[str, str] = {}
     for environment in environments:
         try:
-            connector = AAPConnector(environment)
+            connector = open_aap_connector(environment, db)
             config = await connector.collect_controller_config()
             merge_controller_config(environment, config)
         except Exception as exc:  # noqa: BLE001

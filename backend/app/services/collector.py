@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models import ActionAudit, FleetAlert, HealthSample, ManagedEnvironment, ManagedResource, ServiceSnapshot, SyncExecution
-from app.services.connectors import AAPConnector
+from app.services.hub_preferences import open_aap_connector
 from app.services.policies import evaluate_policies
 
 logger = logging.getLogger(__name__)
@@ -126,7 +126,7 @@ def run_environment_sync(environment_id: str, requested_by: str = "system") -> N
             raise RuntimeError("Environment not found")
         previous_status = environment.status
 
-        result = asyncio.run(AAPConnector(environment).collect())
+        result = asyncio.run(open_aap_connector(environment, db).collect())
 
         db.execute(delete(ManagedResource).where(ManagedResource.environment_id == environment_id))
         for service, summary in result["service_summaries"].items():

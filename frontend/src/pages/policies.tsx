@@ -218,7 +218,7 @@ export function PoliciesPage() {
         <PageHeader
           section="Governance"
           title="Fleet policies and compliance results"
-          description="Compare controller settings across AAP estates and Orchestrator configuration across Orchestrator estates. Admins can create policies and push missing or drifted configuration onto noncompliant environments."
+          description="Shared checks cover TLS, health, and collection refresh for every estate. Ansible Automation Platform checks cover controller settings and version. Automation Orchestrator checks cover workflows and executions."
           actions={
             canManage ? (
               <Button variant="primary" onClick={() => setIsCreateOpen(true)}>

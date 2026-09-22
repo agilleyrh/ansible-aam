@@ -20,6 +20,7 @@ import type {
   EnvironmentGroup,
   RemoteActionRequest,
   RemoteActionResponse,
+  HubPreferences,
   RuntimeSettings,
   SearchResult,
   SyncExecution,
@@ -170,6 +171,9 @@ export const api = {
       signal,
     }),
   runtimeSettings: (signal?: AbortSignal) => request<RuntimeSettings>("/settings/runtime", { signal }),
+  hubPreferences: (signal?: AbortSignal) => request<HubPreferences>("/settings/preferences", { signal }),
+  updateHubPreferences: (payload: HubPreferences & { apply_sync_interval_to_all?: boolean }) =>
+    request<HubPreferences>("/settings/preferences", { method: "PATCH", body: payload }),
   executeAction: (payload: RemoteActionRequest) => request<RemoteActionResponse>("/actions", { method: "POST", body: payload }),
   jobs: (
     options: { status?: string; environmentId?: string; limitPerEnvironment?: number; signal?: AbortSignal } = {},

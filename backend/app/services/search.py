@@ -3,8 +3,8 @@ from __future__ import annotations
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.models import ManagedEnvironment, ManagedResource
+from app.services.hub_preferences import load_hub_preferences
 from app.schemas import SearchResult
 
 SEARCH_ALIASES = {
@@ -27,7 +27,7 @@ def _search_terms(query: str) -> list[str]:
 
 
 def run_search(db: Session, query: str, environment_ids: list[str] | None = None) -> list[SearchResult]:
-    settings = get_settings()
+    settings = load_hub_preferences(db)
     filters = []
     for term in _search_terms(query):
         escaped = _escape_like(term)

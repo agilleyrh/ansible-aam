@@ -32,13 +32,21 @@ def main() -> None:
     finally:
         db.close()
 
-    logger.info("Scheduler started with %ds interval", settings.scheduler_interval_seconds)
+    logger.info("Scheduler started")
     while _running:
+        interval = settings.scheduler_interval_seconds
         try:
+            db = SessionLocal()
+            try:
+                from app.services.hub_preferences import load_hub_preferences
+
+                interval = load_hub_preferences(db).scheduler_interval_seconds
+            finally:
+                db.close()
             enqueue_due_syncs()
         except Exception:
             logger.exception("Error during sync scheduling cycle")
-        time.sleep(settings.scheduler_interval_seconds)
+        time.sleep(max(interval, 15))
 
 
 if __name__ == "__main__":
