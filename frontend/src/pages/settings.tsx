@@ -449,14 +449,9 @@ export function ApplicationSettingsPage() {
                   These values come from the running service. Change them in the deployment configuration, not here.
                 </Content>
               </StackItem>
-      {error ? (
-        <StackItem>
-          <Alert isInline variant="warning" title={`Loaded with partial data: ${error}`} />
-        </StackItem>
-      ) : null}
 
-      <StackItem>
-        <Gallery hasGutter minWidths={{ default: "180px", lg: "220px" }}>
+              <StackItem>
+                <Gallery hasGutter minWidths={{ default: "180px", lg: "220px" }}>
           <StatCard label="Mode" value={settings.environment} detail="Backend runtime environment" />
           <StatCard label="API prefix" value={settings.api_prefix} detail="Gateway path mounted by the API service" />
         </Gallery>
