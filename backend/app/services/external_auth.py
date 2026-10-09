@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 def public_provider(provider: IdentityProvider) -> dict[str, Any]:
-    config = provider.config or {}
     return {
         "id": provider.id,
         "name": provider.name,

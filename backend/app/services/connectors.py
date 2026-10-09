@@ -1424,7 +1424,7 @@ class AAPConnector:
             candidates = [
                 f"/api/galaxy/_ui/v1/execution-environments/repositories/{target_id}/sync/",
                 f"/api/automation-hub/_ui/v1/repositories/{target_id}/sync/",
-                f"/api/galaxy/v3/plugin/ansible/content/published/sync/",
+                "/api/galaxy/v3/plugin/ansible/content/published/sync/",
             ]
             if path_override:
                 candidates = [allowed_action_path(action, path_override, candidates[0])]

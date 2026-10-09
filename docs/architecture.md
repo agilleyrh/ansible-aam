@@ -117,8 +117,8 @@ Authorization follows Automation Orchestrator. Usage and provider configuration 
 ### Automation Orchestrator
 
 - Syncs workflows, executions, and integrations as their own estate.
-- Supports cancel of a running execution through `POST /api/v1/executions/{id}/cancel`.
-- Lists pending approvals and records approve or reject through `POST /api/v1/approvals/{id}/approve` or `/reject`.
+- Supports cancel of a running execution. The hub calls `POST /api/v1/executions/{id}/cancel` on the remote Orchestrator; from AAM's own API this is `cancel_execution` through `POST /api/v1/actions` (see the API surface in [README.md](../README.md)).
+- Lists pending approvals from the hub's `GET /api/v1/approvals` and records approve or reject through AAM's `POST /api/v1/actions` (`decide_approval`), which in turn calls `POST /api/v1/approvals/{id}/approve` or `/reject` on the remote Orchestrator.
 
 ### EDA
 
